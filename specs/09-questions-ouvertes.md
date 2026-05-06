@@ -121,37 +121,33 @@ Chaque question a :
 
 ---
 
-### QO-007 — Compilation KN5 sur Linux/Mac
+### QO-007 — Validation de Wine pour `compile_kn5`
 
-- **Statut** : ouverte
-- **Itération cible** : 1
-- **Bloque** : déploiement de production sans Windows
+- **Statut** : en cours (prototype dès It. 1)
+- **Itération cible** : 1 ou 2
+- **Bloque** : portabilité totale (suppression de la dépendance PC Windows)
 
-**Contexte** : `ksEditor` est Windows-only. Au MVP on a un worker dédié Windows. Idéalement on devrait pouvoir compiler depuis Linux pour homogénéiser.
+**Contexte** : `ksEditor.exe` est Windows-only. L'option A (worker Windows natif sur le PC) est retenue pour le MVP/V1 (cf. [`05-infrastructure.md §5.4`](./05-infrastructure.md#54-compilation-kn5--cas-particulier)). En parallèle, on prototype l'option B : container Docker Linux avec Wine + ksEditor packagés.
 
-**Options** :
-- A. **Worker Windows dédié** sur le PC. Choix MVP.
-- B. **Wine** dans une image Docker Linux. À tester.
-- C. **Reverse-engineer** du format KN5 et écrire un compileur Python. Risqué (format propriétaire).
+**Critères d'acceptation pour valider Wine** :
+- Au moins **5 KN5 différents** générés via Wine doivent être **bit-à-bit identiques** ou fonctionnellement équivalents en jeu à ceux générés via Windows natif.
+- Pas de régression observée sur :
+  - Les textures (albedo, normal, roughness).
+  - L'AI line.
+  - Les surfaces (frictions correctes).
+  - Le chargement dans Content Manager.
+- Performance acceptable : compilation Wine ≤ 2× le temps natif.
 
-**Préfèrence** : maintenir A pour MVP, explorer B en parallèle.
+**Si validé** → ADR (probablement ADR-020+) qui acte Wine comme principal. Le PC est rétrogradé en secours optionnel. Migration progressive en V2.
+
+**Si invalidé** → on garde le PC comme dépendance et on continue avec l'option A.
 
 ---
 
 ### QO-008 — Format intermédiaire entre activités GPU
 
-- **Statut** : ouverte
-- **Itération cible** : 1
-- **Bloque** : performance des workflows
-
-**Contexte** : entre les activités GPU successives (train_gs → extract_mesh → bake), on transfère des fichiers via MinIO. Pour des tuiles de plusieurs Go, c'est lent.
-
-**Options** :
-- A. **Tout via MinIO**. Simple, robuste, permet aux activités de tourner sur des workers différents.
-- B. **Activités combinées** : un seul GPU traite une tuile de bout en bout. Réduit transferts mais perd de la granularité.
-- C. **Stockage local au worker** + activités enchaînées sur le même worker (Temporal supporte les session activities).
-
-**À trancher** après mesure du coût de transfert au POC.
+- **Statut** : tranchée → [ADR-019](./08-decisions.md#adr-019--session-activities-pour-chaîner-le-pipeline-gpu-dune-tuile)
+- **Décision** : option C — **session activities Temporal** chaînées sur un même worker GPU. Validation technique à faire au POC, fallback sur option B (activité monolithique) si frictions techniques.
 
 ---
 

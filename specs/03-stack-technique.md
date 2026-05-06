@@ -6,7 +6,7 @@
 
 | Catégorie | Choix | Version cible | Pourquoi |
 |---|---|---|---|
-| Runtime | Python | 3.12 | Performances, typing améliorés, support Temporal SDK |
+| Runtime | Python | **≥ 3.11** (cible 3.12) | Performances, typing améliorés, support Temporal SDK. Fallback 3.11 si une lib ML coince. |
 | Gestion deps | uv | dernière stable | Fast, workspace-aware, lockfile reproductible |
 | Orchestrateur | Temporal | 1.x (Python SDK ≥ 1.7) | Durable execution, workflows long-runs, multi-queue |
 | HTTP API | FastAPI | ≥ 0.110 | Pydantic v2 natif, async, OpenAPI auto |
@@ -20,7 +20,7 @@
 | Containerisation | Docker | Engine 24+ | Standard |
 | Compose | Docker Compose | v2 | Standard |
 | Réseau overlay | Tailscale | dernière stable | Zero-config mesh, MagicDNS |
-| GPU runtime | CUDA | 12.4 | Compatibilité gsplat/2DGS récents |
+| GPU runtime | CUDA | 12.4 | Compatibilité gsplat/2DGS récents. **Driver NVIDIA ≥ R550** (Linux) / **R551** (Windows). |
 | ML — GS training | gsplat | dernière stable | Implémentation officielle Nerfstudio, perf |
 | ML — Mesh extraction | 2DGS | repo officiel | Mesh propre depuis splats |
 | ML — Segmentation | Mask2Former (HF) | via `transformers` 4.40+ | Modèle SOTA, dispo Hugging Face |
@@ -32,6 +32,8 @@
 | Mesh / FBX | Blender | 4.2 LTS | Bake, FBX, scriptable Python |
 | Track AC build | ksEditor | binaire fourni | Compilation KN5 (Windows) |
 | Tests | pytest + pytest-asyncio | dernières stables | Standard |
+| Tests — mocking | pytest-mock | dernière stable | Mocks idiomatiques (mocker fixture) |
+| Tests — property-based | hypothesis | dernière stable | Tests de propriétés mathématiques sur `geo` (rotations, projections, EKF) |
 | Tests Temporal | `temporalio.testing` | inclus dans SDK | Workflows en env in-memory |
 | Tests containers | testcontainers | dernière stable | Postgres / MinIO en intégration |
 | Lint / format | ruff | dernière stable | Rapide, remplace black + isort + flake8 |
@@ -168,10 +170,21 @@ Reality Capture / Metashape sont commerciaux, fermés, et leur photogrammétrie 
 
 ## 3. Versions Python et pin policy
 
-- **Python 3.12** sur tous les workers et services.
+- **Python ≥ 3.11**, cible **3.12** sur tous les workers et services. Si une lib ML ne supporte pas 3.12, fallback documenté à 3.11 sans drama.
 - **Lockfile uv.lock** committé. Toute mise à jour passe par `uv lock --upgrade-package <pkg>` et est revue.
 - **Pin majeur** sur les libs critiques (Temporal, Pydantic, FastAPI).
 - **Range mineur** sur les libs ML (qui évoluent vite, rebreaking attendu).
+
+### Procédure en cas de conflit irréductible entre libs ML
+
+Si deux libs ML deviennent **mutuellement incompatibles** (ex. gsplat exige PyTorch 2.6, NeILF++ exige PyTorch 2.4 et la migration n'est pas raisonnable), on isole en **deux images Docker `gpu-worker` distinctes** + **deux task queues spécialisées** :
+
+| Image | Libs principales | Activités | Task queue |
+|---|---|---|---|
+| `road2track/gpu-worker-gs` | gsplat, 2DGS, Mask2Former, PyTorch X | train_gs, extract_mesh, segment | `gpu-gs` |
+| `road2track/gpu-worker-pbr` | NeILF++, PyTorch Y | bake, estimate_pbr | `gpu-pbr` |
+
+Le workflow route les activités vers la bonne queue. Cette procédure est **un fallback défensif** : on essaie en priorité de garder **une seule image** `gpu-worker` qui fait tout, jusqu'à preuve d'un conflit irréductible. Si déclenchée, ouvrir un ADR pour acter le split.
 
 ## 4. Outils de dev
 

@@ -74,9 +74,23 @@ Détails matériels et infra dans [`05-infrastructure.md`](./05-infrastructure.m
 
 - `core` ne dépend que de la stdlib + Pydantic + types primitifs (numpy autorisé pour les value objects géométriques).
 - `geo`, `ml`, `storage`, `ac_export`, `cloud_bridge` dépendent de `core` et de leurs libs spécifiques.
-- `pipeline` dépend de `core` + des adapters dont il a besoin pour ses activités.
+- `pipeline/` est divisé en deux sous-dossiers avec des règles **strictes** :
+  - `pipeline/workflows/` ← dépend **uniquement** de `core` + signatures (types) d'activités. **Aucun import d'adapter** (`ml`, `storage`, `ac_export`, `cloud_bridge`). Cette règle garantit le **déterminisme Temporal** : un workflow rejoué doit produire la même séquence d'appels.
+  - `pipeline/activities/` ← dépend de `core` + adapters concrets. Effets de bord autorisés.
 - `services/*` dépendent de `pipeline` (et indirectement de tout ce qui est nécessaire).
 - **Aucune dépendance circulaire**. **Aucune flèche vers le haut.**
+
+### Garantie automatique de la règle workflows/adapters
+
+La règle workflows ⇎ adapters est **vérifiée en CI** par un script de lint d'imports :
+
+```bash
+# scripts/check_workflow_imports.py
+# Échec si un fichier sous packages/pipeline/src/.../workflows/
+# importe un module sous packages/{ml,storage,ac_export,cloud_bridge}/.
+```
+
+Toute PR qui enfreint la règle est bloquée automatiquement.
 
 ## 3. Workspace `uv`
 
@@ -134,6 +148,46 @@ road2track-geo = { workspace = true }
 # ...
 ```
 
+Exemple complet d'un package racine de la couche domaine :
+
+```toml
+# packages/core/pyproject.toml
+[project]
+name = "road2track-core"
+version = "0.1.0"
+description = "Domaine pur — entités, value objects, ports, événements."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.5",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "hypothesis", "pyright", "ruff"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/road2track_core"]
+```
+
+### Définition des task queues (centrale)
+
+Toutes les task queues Temporal sont définies dans **un seul endroit** : `packages/core/src/road2track_core/queues.py`.
+
+```python
+from enum import StrEnum
+
+class TaskQueue(StrEnum):
+    CPU            = "cpu"             # workers Mac (orchestrateur), agnostique
+    GPU            = "gpu"             # workers CUDA externes (PC + cloud)
+    WINDOWS_TOOLS  = "windows-tools"   # workers Windows natifs (ksEditor pour KN5)
+```
+
+Chaque worker Python lit cette enum pour s'enregistrer sur la bonne queue. Voir [`05-infrastructure.md`](./05-infrastructure.md) pour le détail du déploiement de chaque type de worker.
+
 ## 4. Description détaillée par package
 
 ### 4.1 `core` (domaine)
@@ -160,8 +214,9 @@ packages/core/src/road2track_core/
 ├── ports/
 │   ├── storage_port.py     # interface abstraite
 │   ├── gpu_provider_port.py
+│   ├── repository_port.py  # ProjectRepository, SegmentRepository, ...
 │   └── notification_port.py
-├── queues.py               # TaskQueue enum (cpu, gpu)
+├── queues.py               # TaskQueue enum (cpu, gpu, windows-tools)
 └── errors.py               # exceptions domaine
 ```
 
@@ -228,10 +283,12 @@ packages/storage/src/road2track_storage/
 │   ├── postgres_adapter.py
 │   └── models.py           # SQLAlchemy
 └── repositories/
-    ├── project_repo.py     # CRUD Project
-    ├── segment_repo.py
-    └── tile_repo.py
+    ├── project_repo.py     # PostgresProjectRepository implements ProjectRepository (port)
+    ├── segment_repo.py     # PostgresSegmentRepository implements SegmentRepository
+    └── tile_repo.py        # PostgresTileRepository implements TileRepository
 ```
+
+**Convention** : chaque repo concret implémente un Protocol défini dans `core/ports/repository_port.py`. Le code applicatif ne dépend que des Protocols, jamais des classes concrètes Postgres. Permet le swap (par ex. mock en tests, SQLite en local pour des essais ponctuels) sans propagation.
 
 ### 4.5 `ac_export` (génération de track AC)
 
@@ -264,9 +321,11 @@ packages/cloud_bridge/src/road2track_cloud_bridge/
 │   ├── runpod.py
 │   ├── vast.py
 │   └── local_desktop.py    # PC Windows persistant
-├── orchestrator.py         # logique : qui prend la prochaine tâche
+├── lifecycle.py            # cycle de vie des workers (spawn/shutdown/status)
 └── tunnel.py               # helpers Tailscale
 ```
+
+**Responsabilité limitée** : `cloud_bridge` gère **uniquement** le **cycle de vie** des workers (provisioning, shutdown, healthcheck). Il ne fait **aucun scheduling de tâches** — c'est Temporal qui s'en charge via les task queues. `lifecycle.py` expose des opérations comme `spawn_worker(provider, spec)`, `shutdown_worker(handle)`, `list_workers()`.
 
 ### 4.7 `pipeline` (cœur applicatif)
 
@@ -279,22 +338,35 @@ packages/pipeline/src/road2track_pipeline/
 │   ├── process_tile.py
 │   └── stitch_tiles.py
 ├── activities/
-│   ├── ingest.py
-│   ├── fuse_sensors.py
-│   ├── detect_kind.py      # circuit vs spéciale
-│   ├── tile.py
-│   ├── train_gs.py         # → queue gpu
-│   ├── extract_mesh.py     # → queue gpu
-│   ├── segment.py          # → queue gpu
-│   ├── bake.py             # → queue gpu
-│   ├── estimate_pbr.py     # → queue gpu
-│   ├── stitch.py
-│   ├── export_ac.py
-│   └── notify.py
+│   ├── ingest.py                  # → queue cpu
+│   ├── fuse_sensors.py            # → queue cpu
+│   ├── detect_kind_and_trim.py    # → queue cpu (circuit/spéciale + lead-in)
+│   ├── tile.py                    # → queue cpu (découpage spatial)
+│   ├── select_keyframes.py        # → queue cpu
+│   ├── segment.py                 # → queue gpu (Mask2Former)
+│   ├── train_gs.py                # → queue gpu
+│   ├── extract_mesh.py            # → queue gpu (2DGS)
+│   ├── segment_mesh.py            # → queue cpu (vote sur triangles)
+│   ├── decimate_uv.py             # → queue cpu
+│   ├── bake.py                    # → queue gpu (multi-vue)
+│   ├── estimate_pbr.py            # → queue gpu (NeILF++)
+│   ├── stitch.py                  # → queue cpu
+│   ├── extract_centerline.py      # → queue cpu
+│   ├── generate_ai_line.py        # → queue cpu
+│   ├── generate_ac_track.py       # → queue cpu
+│   ├── compile_kn5.py             # → queue windows-tools (ksEditor)
+│   ├── package_content_manager.py # → queue cpu
+│   └── notify.py                  # → queue cpu
 └── client.py               # helpers pour starter un workflow depuis API/CLI
 ```
 
+Liste exhaustive et détails des entrées/sorties dans [`04-pipeline-ml.md`](./04-pipeline-ml.md).
+
 **Règle critique pour les workflows Temporal** : les workflows doivent être **déterministes**. Pas de `datetime.now()` direct, pas de `random` non seedé, pas de I/O. Toute non-déterminisme → activité.
+
+**Invariant des activités** : chaque activité prend **un input Pydantic** et retourne **un output Pydantic**. Aucune mutation d'état global, aucun side-effect implicite. Permet de tester chaque activité unitairement avec un mock du contexte Temporal.
+
+**Session activities pour le pipeline GPU d'une tuile** : les activités GPU `train_gs`, `extract_mesh`, `bake`, `estimate_pbr` sont **chaînées sur un même worker** via une session Temporal pour éviter les transferts MinIO redondants. Voir [ADR-019](./08-decisions.md#adr-019--session-activities-pour-chaîner-le-pipeline-gpu-dune-tuile).
 
 ## 5. Patterns appliqués
 
@@ -305,9 +377,23 @@ packages/pipeline/src/road2track_pipeline/
 - Le **pipeline** dépend des ports, pas des adapters concrets.
 - L'injection se fait au démarrage des workers : un worker construit ses adapters concrets et les passe aux activités.
 
-### 5.2 Command Pattern (CLI)
+### 5.2 CLI — fonctions Typer
 
-Chaque commande CLI (`uv run road2track <cmd>`) est une classe `Command` avec un `execute()`. Le routing est fait par Typer.
+Chaque commande CLI (`uv run road2track <cmd>`) est une **fonction Typer typée**. Pas de Command pattern, pas d'OOP forcée. Les inputs sont validés via Pydantic ou les types natifs Typer.
+
+```python
+# services/cli/src/main.py
+import typer
+app = typer.Typer()
+
+@app.command()
+def ingest(path: Path, project_id: str | None = None) -> None:
+    ...
+
+@app.command()
+def process(project_id: str, force: bool = False) -> None:
+    ...
+```
 
 ### 5.3 Repository Pattern
 
@@ -337,12 +423,52 @@ Toute persistance Postgres passe par des `*Repo` dans `storage/repositories/`. L
 - Les activités s'échangent des **objets Pydantic légers** (`TileRef`, `MeshRef`, `TexturesRef`) qui contiennent les clés MinIO et les métadonnées.
 - Les schemas de ces objets vivent dans `core/entities/` et sont versionnés.
 
+### Optimisation : session activities pour le pipeline GPU
+
+Pour éviter les transferts MinIO redondants entre activités GPU consécutives sur la même tuile (`train_gs` → `extract_mesh` → `bake` → `estimate_pbr`), Temporal **fixe ces activités sur un même worker** via une session. Le `scene.ply` (~2-5 Go) reste en cache local du worker entre les étapes.
+
+```python
+# pipeline/workflows/process_tile.py (vue simplifiée)
+async with workflow.session(task_queue=TaskQueue.GPU) as session:
+    scene = await session.execute_activity(train_gs, tile_ref)
+    mesh = await session.execute_activity(extract_mesh, scene)
+    textures = await session.execute_activity(bake, mesh, scene)
+    pbr = await session.execute_activity(estimate_pbr, mesh, textures)
+```
+
+Voir [ADR-019](./08-decisions.md#adr-019--session-activities-pour-chaîner-le-pipeline-gpu-dune-tuile).
+
+### Convention de logging structuré
+
+Tous les services émettent des logs **JSON via `structlog`**. Champs minimaux **toujours** présents :
+- `project_id`
+- `segment_id` (si applicable)
+- `tile_id` (si applicable)
+- `workflow_id` (Temporal)
+- `activity_name` (Temporal)
+- `worker_name` / `host`
+- `level`, `timestamp_utc`, `message`
+
+Permet la corrélation cross-machine via Loki + Grafana (cf. [`05-infrastructure.md §9`](./05-infrastructure.md#9-observabilité-optionnelle-v1)).
+
+### Health check au démarrage de chaque worker
+
+Chaque worker (cpu, gpu, windows-tools) exécute une **séquence de vérifications** avant de prendre des tâches :
+
+| Worker | Vérifications |
+|---|---|
+| `cpu_worker` | Connexion Postgres, MinIO, NATS, Temporal frontend joignable |
+| `gpu_worker` | Tous les checks `cpu_worker` + CUDA dispo + version driver compatible + mémoire VRAM ≥ seuil |
+| `windows-worker` | Tous les checks `cpu_worker` + `ksEditor.exe` exécutable |
+
+En cas d'échec : exit code ≠ 0 + log d'erreur explicite. Pas de "fail silent".
+
 ## 8. Stratégie de tests
 
 | Niveau | Lieu | Outil | But |
 |---|---|---|---|
-| Unitaire | `tests/unit/<package>/` | pytest | Tester chaque fonction pure (geo, core) |
-| Intégration | `tests/integration/` | pytest + temporalio.testing | Tester les workflows en mode test (pas de Temporal réel, env in-memory) |
+| Unitaire | `tests/unit/<package>/` | pytest, pytest-mock, **hypothesis** | Tester chaque fonction pure (geo, core). Property-based pour la math géométrique (transformations WGS84↔ENU, fusion EKF, rotations quaternions). |
+| Intégration | `tests/integration/` | pytest + temporalio.testing | Tester les workflows en mode test (pas de Temporal réel, env in-memory). Activités mockées par défaut, déterminisme vérifié. |
 | Adapters | `tests/integration/storage/` | pytest + testcontainers | Tester les adapters contre du vrai MinIO / Postgres en container |
 | End-to-end | `tests/e2e/` | pytest | Bout-en-bout sur dataset jouet |
 
@@ -351,6 +477,7 @@ Couverture cible : **80% sur `core` et `geo`, 60% sur `pipeline`**, le reste à 
 ## 9. Anti-patterns interdits
 
 - ❌ Importer `temporalio.workflow` dans une activité.
+- ❌ **Importer un adapter** (`road2track_ml`, `road2track_storage`, `road2track_ac_export`, `road2track_cloud_bridge`) **dans un fichier sous `pipeline/workflows/`**. Vérifié par lint en CI.
 - ❌ Importer un module ML (`gsplat`, `torch`) dans `core` ou `geo`.
 - ❌ Faire un `Path("/...")` dans `core`.
 - ❌ Mettre de la logique métier dans une activité (l'activité orchestre l'appel à un adapter, le résultat est traité par le workflow).
@@ -358,8 +485,11 @@ Couverture cible : **80% sur `core` et `geo`, 60% sur `pipeline`**, le reste à 
 - ❌ Définir un `class Project` ailleurs que dans `core/entities/project.py`.
 - ❌ Faire des appels HTTP directs depuis une activité, sans passer par un adapter.
 - ❌ Stocker des secrets en dur. Tous les secrets viennent de variables d'environnement chargées par les services.
+- ❌ Coder un scheduling de tâches dans `cloud_bridge`. Le scheduling, c'est Temporal.
 
 ## 10. Diagramme de flux d'un traitement complet
+
+> **Vue simplifiée.** Le pipeline complet a 19 étapes, détaillées dans [`04-pipeline-ml.md`](./04-pipeline-ml.md). Ci-dessous on regroupe par catégorie pour la lisibilité.
 
 ```
 CLI: road2track process <project-id>
@@ -370,24 +500,34 @@ client.py → Temporal: start_workflow(ProcessProject, project_id)
       ▼
 Workflow: ProcessProject
       │
-      ├─ activity.ingest_session                  [queue cpu]
-      ├─ activity.fuse_sensors                    [queue cpu]
-      ├─ activity.detect_kind (circuit/spéciale)  [queue cpu]
-      ├─ activity.tile (découpage spatial)        [queue cpu]
+      ├─ activity.ingest_session                       [queue cpu]
+      ├─ activity.fuse_sensors                         [queue cpu]
+      ├─ activity.detect_kind_and_trim                 [queue cpu]
+      ├─ activity.tile (découpage spatial)             [queue cpu]
       │
       └─ Pour chaque tuile en parallèle:
             workflow.start_child(ProcessTile, tile_ref)
                   │
-                  ├─ activity.segment             [queue gpu]
-                  ├─ activity.train_gs            [queue gpu]
-                  ├─ activity.extract_mesh        [queue gpu]
-                  ├─ activity.bake                [queue gpu]
-                  └─ activity.estimate_pbr        [queue gpu]
+                  ├─ activity.select_keyframes         [queue cpu]
+                  │
+                  └─ Session GPU (même worker, fichiers en cache local) :
+                        ├─ activity.segment            [queue gpu]
+                        ├─ activity.train_gs           [queue gpu]
+                        ├─ activity.extract_mesh       [queue gpu]
+                        ├─ activity.bake               [queue gpu]
+                        └─ activity.estimate_pbr       [queue gpu]
+                  │
+                  ├─ activity.segment_mesh             [queue cpu]
+                  └─ activity.decimate_uv              [queue cpu]
       │
       ▼
-      ├─ activity.stitch_tiles                    [queue cpu]
-      ├─ activity.export_ac                       [queue cpu]
-      └─ activity.notify                          [queue cpu]
+      ├─ activity.stitch                               [queue cpu]
+      ├─ activity.extract_centerline                   [queue cpu]
+      ├─ activity.generate_ai_line                     [queue cpu]
+      ├─ activity.generate_ac_track                    [queue cpu]
+      ├─ activity.compile_kn5                          [queue windows-tools]
+      ├─ activity.package_content_manager              [queue cpu]
+      └─ activity.notify                               [queue cpu]
       │
       ▼
 Résultat : zip prêt dans MinIO, lien retourné au CLI

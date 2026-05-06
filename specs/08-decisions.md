@@ -566,6 +566,45 @@ Au MVP solo, la **prudence financière** prime sur le confort. Un coût cloud no
 
 ---
 
+## ADR-019 — Session activities pour chaîner le pipeline GPU d'une tuile
+
+- **Statut** : accepté
+- **Date** : 2026-05-06
+- **Décideurs** : utilisateur, Claude
+- **Contexte de décision** : Review 2.
+
+### Contexte
+
+Le pipeline GPU enchaîne pour chaque tuile : `train_gs` (sortie 2-5 Go) → `extract_mesh` → `bake` → `estimate_pbr`. Si chaque activité tourne sur un worker distinct, chaque étape doit télécharger l'output de la précédente depuis MinIO et ré-uploader le sien. Pour des fichiers de plusieurs Go, ces transferts doublent ou triplent le temps de traitement, surtout quand le worker est en cloud (bande passante limitée vers MinIO local).
+
+### Options considérées
+
+- **A. Session activities Temporal** : on "fixe" la séquence sur un même worker via le mécanisme de session du SDK Temporal. Les fichiers intermédiaires (`scene.ply`, `mesh.obj`) restent dans le cache local du worker entre les étapes.
+- **B. Activité monolithique** `process_tile_gpu` : on fusionne les 4 étapes en une seule activité. Simple mais reprise grossière (si `bake` échoue, on rejoue tout `train_gs`).
+- **C. Statu quo** : tout via MinIO entre chaque activité. Lent et coûteux.
+
+### Décision
+
+**A — Session activities** au MVP, avec validation technique au POC.
+
+Si le SDK Python Temporal pose des frictions techniques pour les sessions (compatibilité, stabilité), fallback sur **B** au MVP, et on raffine en V1.
+
+### Conséquences
+
+- ✅ Élimine les transferts MinIO redondants entre étapes GPU consécutives.
+- ✅ Garde la granularité fine de reprise (chaque activité reste retournable séparément).
+- ✅ Logs et métriques par étape conservés.
+- ❌ Si le worker meurt en cours de session, les fichiers locaux sont perdus → on rejoue depuis MinIO.
+- ❌ Plus complexe à coder qu'une activité monolithique.
+- 🔧 **Mitigation** : le résultat de chaque activité est aussi persisté en MinIO (asynchrone après la session) pour qu'on puisse rejouer sans perte.
+
+### Suivi
+
+- POC : valider techniquement le pattern session avec le SDK Python.
+- It. 1 : si OK, déployer en production. Si KO, basculer sur B et documenter dans un ADR de remplacement.
+
+---
+
 ## Index
 
 | ADR | Titre | Statut |
@@ -588,6 +627,7 @@ Au MVP solo, la **prudence financière** prime sur le confort. Un coût cloud no
 | 016 | Pas de détection automatique de lead-in en spéciale | accepté |
 | 017 | Synchronisation Record3D ↔ Sensor Logger via timestamps UTC | accepté |
 | 018 | Pas de provisioning cloud automatique au MVP | accepté |
+| 019 | Session activities pour chaîner le pipeline GPU d'une tuile | accepté |
 
 ---
 

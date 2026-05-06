@@ -102,6 +102,22 @@ Tous les services binds sur `127.0.0.1` côté hôte. **Aucun port n'est ouvert 
 
 Politique : LFU dans `intermediates`, conservation longue dans `raw` et `outputs`.
 
+#### Estimation d'espace par projet
+
+| Bucket | Contenu typique (1 km, 1 tuile) | Contenu (10 km, 13 tuiles) |
+|---|---|---|
+| `raw` | 5-15 Go (vidéo HEVC + LiDAR + capteurs) | 40-100 Go |
+| `intermediates` | 10-30 Go (`scene.ply` 3 Go × 1 + mesh + textures + GS checkpoints) | 80-300 Go |
+| `outputs` | 100-300 Mo (KN5 + assets) | 200-600 Mo |
+| **Total** | **~50 Go** | **~400 Go** |
+
+**Provisionnement recommandé** :
+- POC / It. 0-1 (1 km mono-projet) : **100 Go** dispo MinIO.
+- MVP / It. 2 (multi-projet 1 km) : **500 Go**.
+- V1 / It. 4 (10-15 km) : **1-2 To** sur disque rapide, ou tiering vers disque externe.
+
+Note : les `intermediates` sont **purgeables** (reproductibles depuis les `raw`). Une tâche cron mensuelle (`uv run road2track maintenance gc-intermediates`) supprime ceux dont le projet est terminé depuis > 30 jours.
+
 ### 4.3 Schéma Postgres applicatif
 
 Tables principales (détails dans [`06-modele-donnees.md`](./06-modele-donnees.md)) :
@@ -201,15 +217,52 @@ uv run road2track gpu shutdown --all
 
 ### 5.4 Compilation KN5 — cas particulier
 
-`ksEditor` est un binaire **Windows uniquement**. Trois options :
+`ksEditor.exe` est un binaire **Windows uniquement**. Options évaluées :
 
 | Option | Détail | Choix |
 |---|---|---|
-| A | Worker dédié sur le PC Windows qui n'écoute que la queue `windows-tools` | ✅ Choix MVP |
-| B | Wine dans l'image `gpu_worker` | ⏸ Backup, non testé |
-| C | Format alternatif (FBX charged direct par AC + CSP)| ❌ Pas robuste |
+| A | **Worker Windows natif** sur le PC, écoute la queue `windows-tools` | ✅ **MVP / V1** |
+| B | **Wine dans un container Linux dédié** (image distincte du `gpu_worker`), expose la queue `windows-tools` aussi | 🧪 **Prototype dès It. 1 en parallèle**. Si validé, devient option principale en V2. |
+| C | VM Windows sur cloud (Azure/AWS) | ❌ Rejeté (overhead, coût) |
+| D | Reverse-engineer du format KN5 | ❌ Rejeté (risqué, propriétaire) |
 
-Au MVP, on a un **second worker sur le PC** qui n'écoute que la queue `windows-tools` et expose une activité `compile_kn5`.
+#### Option A — Worker Windows natif (MVP)
+
+Sur le PC Windows, deux processus tournent côte-à-côte :
+
+```
+PC Windows
+├─ Docker Desktop
+│   └─ gpu-worker          (queue: gpu)
+└─ Process Python natif (uv run python -m services.windows_worker)
+    └─ windows-worker      (queue: windows-tools)
+        └─ activité: compile_kn5  (lance ksEditor.exe en CLI)
+```
+
+Le `windows-worker` n'a **pas besoin de GPU** : c'est un petit process CPU qui appelle `ksEditor.exe`.
+
+#### Option B — Wine container (à valider)
+
+En parallèle de l'option A, on prototype une **image Docker Linux avec Wine + ksEditor.exe** packagés :
+
+```dockerfile
+FROM ubuntu:22.04
+RUN dpkg --add-architecture i386 && \
+    apt update && apt install -y wine64 wine32 winetricks
+COPY ksEditor /opt/ksEditor
+COPY entrypoint.sh /
+ENTRYPOINT ["/entrypoint.sh"]
+```
+
+**Critères d'acceptation** (validés à l'It. 1 ou 2) :
+- Au moins **5 KN5 différents** générés via Wine doivent être **bit-à-bit identiques** (ou fonctionnellement équivalents en jeu) à ceux générés via Windows natif.
+- Pas de régression observée sur les textures, l'AI line, les surfaces.
+
+Si validé → Wine devient **principal en V2**, le PC est rétrogradé en secours. Procédure documentée dans un ADR à ce moment-là.
+
+Si invalidé → on conserve le PC comme dépendance tant que ksEditor reste opaque.
+
+Note : une seule queue `windows-tools` peu importe la techno (PC natif ou Wine container). Le worker s'enregistre, Temporal route. L'utilisateur ne voit pas la différence.
 
 ## 6. Tailscale
 
