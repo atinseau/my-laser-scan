@@ -18,15 +18,17 @@ Les fonctionnalités sont classées en quatre catégories :
 ### 2.1 Capture
 
 - **MH-CAP-1** — La capture s'appuie sur des apps iPhone existantes au POC : **Record3D** (LiDAR + RGB + poses ARKit) et **Sensor Logger** (GPS + IMU + baromètre + magnétomètre). Pas de développement iOS au POC. Voir [`04-pipeline-ml.md`](./04-pipeline-ml.md).
+- **MH-CAP-1bis** — L'agrégation des deux flux Record3D et Sensor Logger se fait par **alignement des timestamps UTC** au moment de l'ingestion. Les deux apps tournent sur la même horloge système iPhone, l'alignement est natif. En cas de divergence détectée, l'activité d'ingestion calcule un offset par **cross-corrélation IMU/ARKit** en fallback. Voir [ADR-017](./08-decisions.md#adr-017--synchronisation-record3d--sensor-logger-via-timestamps-utc).
 - **MH-CAP-2** — La capture supporte des **tronçons de 100 m à 15 km**.
-- **MH-CAP-3** — La capture est **fragmentable** : une session peut être mise en pause et reprise plus tard, ou plusieurs sessions peuvent être ajoutées au même projet (à partir de l'itération 2 avec l'app native). Au POC, une seule session continue suffit.
+- **MH-CAP-3** — La capture est **fragmentable** : une session peut être mise en pause et reprise plus tard, ou plusieurs sessions peuvent être ajoutées au même projet. Cette exigence est **Must have** au sens MoSCoW, mais son **implémentation est étalée** : POC = mono-session continue ; It. 2 = multi-segment via app native (cf. [`07-roadmap.md`](./07-roadmap.md)).
 - **MH-CAP-4** — La capture supporte le **multi-passe qualité** : repasser sur une zone déjà cartographiée enrichit les données plutôt que de les remplacer (à partir de l'itération 2). Voir [`04-pipeline-ml.md#multi-passe`](./04-pipeline-ml.md#multi-passe-qualité).
 
 ### 2.2 Détection automatique du type de tracé
 
 - **MH-DET-1** — Le système détermine automatiquement si le tracé est un **circuit** (la trajectoire repasse par un point déjà visité) ou une **spéciale** (point-à-point, sans bouclage).
-- **MH-DET-2** — Pour un circuit avec lead-in (l'utilisateur quitte un point puis y revient avant de boucler), le lead-in est tronqué automatiquement et seule la boucle est conservée.
-- **MH-DET-3** — Le seuil de détection (distance entre points proches, cap, durée minimale) est configurable mais a des valeurs par défaut documentées dans [`04-pipeline-ml.md`](./04-pipeline-ml.md).
+- **MH-DET-2** — Pour un **circuit** avec lead-in (l'utilisateur quitte un point puis y revient avant de boucler), le lead-in est tronqué automatiquement et seule la boucle est conservée. Détection auto légitime car la boucle est une **propriété géométrique** identifiable.
+- **MH-DET-3** — Pour une **spéciale**, la trajectoire conservée est exactement celle enregistrée. **L'utilisateur est responsable** de démarrer et d'arrêter l'enregistrement aux bornes effectives du stage. Aucune détection automatique de lead-in/lead-out (voir [ADR-016](./08-decisions.md#adr-016--pas-de-détection-automatique-de-lead-in-en-spéciale)).
+- **MH-DET-4** — Le seuil de détection circuit (distance entre points proches, cap, durée minimale) est configurable mais a des valeurs par défaut documentées dans [`04-pipeline-ml.md`](./04-pipeline-ml.md).
 
 ### 2.3 Pipeline de traitement
 
@@ -49,11 +51,12 @@ Les fonctionnalités sont classées en quatre catégories :
 - **MH-INF-2** — Le **GPU compute n'est jamais sur la machine d'orchestration** (Mac). Il est toujours déporté sur une machine externe via Tailscale.
 - **MH-INF-3** — Deux **providers GPU** sont supportés au minimum : un PC Windows local (permanent) et RunPod (à la demande). L'abstraction permet d'en ajouter d'autres sans modifier le pipeline.
 - **MH-INF-4** — Le **bridge cloud** est explicite et auditable : un script CLI provisionne / arrête les pods, le worker s'enregistre auprès du Temporal local via Tailscale.
+- **MH-INF-5** — Lorsqu'aucun worker GPU n'est disponible (PC offline et aucun pod cloud actif), le système retourne une **erreur explicite** au lancement d'un `process`, avec la commande exacte à lancer pour spawner un pod cloud (`uv run road2track gpu spawn ...`). **Aucun provisioning automatique** au MVP, pour ne pas engager de coût cloud sans confirmation utilisateur. Voir [ADR-018](./08-decisions.md#adr-018--pas-de-provisioning-cloud-automatique-au-mvp).
 
 ### 2.6 Qualité visuelle
 
 - **MH-QUA-1** — La texture du mesh final est issue de **photos réelles**, pas générée procéduralement. Voir [`04-pipeline-ml.md#bake-multi-vue`](./04-pipeline-ml.md#bake-multi-vue).
-- **MH-QUA-2** — Le rendu doit être **photoréaliste à vitesse de jeu**, pas seulement en screenshot. Critère subjectif validé en jeu.
+- **MH-QUA-2** — Le rendu doit être **photoréaliste à vitesse de jeu**, pas seulement en screenshot. Critère validé via les **métriques mesurables** définies dans [`04-pipeline-ml.md#7-métriques-de-qualité`](./04-pipeline-ml.md#7-métriques-de-qualité) (PSNR > 25 dB MVP, > 28 dB V1 ; LPIPS < 0.15) et confirmé par jugement utilisateur en jeu.
 - **MH-QUA-3** — Les surfaces uniformes (asphalte) reçoivent une **normale procédurale tilée** pour éviter le "flat plastique", calibrée par la rugosité estimée par LiDAR.
 - **MH-QUA-4** — Les textures sont en **PBR** (albedo, normal, roughness) pour un rendu correct dans AC + CSP.
 
@@ -61,8 +64,9 @@ Les fonctionnalités sont classées en quatre catégories :
 
 ### 3.1 App iOS native
 
-- **SH-IOS-1** — Application iOS native (SwiftUI + ARKit + AVFoundation + CoreLocation + CoreMotion) qui remplace Record3D + Sensor Logger.
+- **SH-IOS-1** — Application iOS native qui remplace Record3D + Sensor Logger (le stack technique précis est documenté dans [`03-stack-technique.md#7-stack-frontend-v1`](./03-stack-technique.md#7-stack-frontend-v1)).
 - **SH-IOS-2** — UI minimaliste : démarrer / pause / reprise / stop / finaliser.
+- **SH-IOS-2bis** — Pour les **spéciales**, l'app peut exposer des **markers explicites** ("marquer début / fin de stage") pour permettre à l'utilisateur d'enregistrer en continu et flagger les bornes après-coup. Optionnel, opt-in. Si non utilisé, comportement = MH-DET-3 (l'utilisateur start/stop manuellement aux bornes).
 - **SH-IOS-3** — Barre de progression à 3 niveaux : distance brute (`X km / 15 km`), couverture qualitative (% de voxels avec ≥ N keyframes), état local (vert/jaune/rouge selon vitesse, lumière, recouvrement).
 - **SH-IOS-4** — Modèle de données segmenté : chaque pause crée un nouveau segment dans le projet en cours.
 - **SH-IOS-5** — Synchronisation des timestamps entre LiDAR, vidéo, IMU, GPS au niveau frame (précision ms).
@@ -98,16 +102,16 @@ Les fonctionnalités sont classées en quatre catégories :
 - **WH-MAR-1** — Marketplace de circuits, partage entre utilisateurs.
 - **WH-AND-1** — Support Android.
 - **WH-WEB-1** — App Store / Play Store.
-- **WH-MIM-1** — Reproduction fidèle de propriétés privées, marques commerciales identifiables.
+- **WH-MIM-1** — Le projet ne fournit aucun outil pour **améliorer, retoucher ou reproduire intentionnellement** des marques commerciales, logos ou propriétés privées identifiables. Le scan capture ce qui est visible sur la voie publique ; l'utilisateur reste responsable de l'usage qu'il fait du résultat.
 
 ## 6. Contraintes techniques
 
 ### 6.1 Matérielles
 
-- **CT-MAT-1** — iPhone Pro avec LiDAR (12 Pro et plus récents).
+- **CT-MAT-1** — iPhone Pro avec LiDAR (12 Pro et plus récents), avec au moins **50 Go d'espace libre** pour les longues captures.
 - **CT-MAT-2** — Machine d'orchestration : macOS, Linux ou Windows. Pas de GPU requise sur cette machine.
-- **CT-MAT-3** — Au moins **un worker GPU CUDA** disponible pour le ML (PC local ou cloud).
-- **CT-MAT-4** — VRAM minimale par worker : **12 Go** pour POC, **24 Go** recommandé pour 1+ km.
+- **CT-MAT-3** — Au moins **un worker GPU CUDA externe** (jamais sur la machine d'orchestration, cf. MH-INF-2 et [ADR-010](./08-decisions.md#adr-010--mac-orchestrateur-sans-gpu-compute)). Localisation : PC local ou pod cloud.
+- **CT-MAT-4** — VRAM minimale par worker : **16 Go** (plancher absolu pour le POC sur petit dataset). **24 Go recommandés** pour des tronçons jusqu'à ~1.5 km par tuile, conformément aux mesures empiriques de [`04-pipeline-ml.md#33-entraînement-gaussian-splatting`](./04-pipeline-ml.md#33-entraînement-gaussian-splatting). Au-delà, tuilage spatial obligatoire.
 
 ### 6.2 Logicielles
 
@@ -192,3 +196,13 @@ Les fonctionnalités listées dans [`00-vision.md#ce-que-le-produit-nest-pas`](.
 | **PBR** | Physically Based Rendering, modèle de matériaux à base d'albedo / normal / roughness / metallic. |
 | **VIO** | Visual-Inertial Odometry, fusion vision + IMU pour estimer les poses. |
 | **Bake** | Calcul de textures 2D à partir d'une scène 3D source (multi-vue ici). |
+| **VRAM** | Video RAM, mémoire dédiée au GPU. Critique pour les workloads ML modernes. |
+| **ARKit** | Framework Apple de réalité augmentée. Fournit les poses 6DoF et la profondeur LiDAR sur iPhone Pro. |
+| **ENU** | East-North-Up. Repère cartésien local centré sur un point géographique, axes : Est, Nord, vertical. |
+| **WGS84** | World Geodetic System 1984, référentiel géographique standard (lat/lon/alt). |
+| **EKF** | Extended Kalman Filter, algorithme de fusion de capteurs récursif. |
+| **HDRi** | High Dynamic Range image (panorama 360°), utilisable comme skybox / environnement lumineux. |
+| **OIS** | Optical Image Stabilization, stabilisation optique du capteur photo de l'iPhone. |
+| **SH** | Spherical Harmonics, base de fonctions utilisée par les Gaussian Splats pour encoder l'apparence directionnelle. |
+| **ICP** | Iterative Closest Point, algorithme d'alignement de nuages de points. |
+| **TSDF** | Truncated Signed Distance Field, représentation volumique d'une surface, utile pour fusionner des scans. |

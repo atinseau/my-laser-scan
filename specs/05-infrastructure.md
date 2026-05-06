@@ -250,6 +250,32 @@ Ou alternative, binder docker-compose sur l'interface `tailscale0` (selon suppor
 - Les volumes Docker stockent les données chiffrées si l'utilisateur active FileVault / BitLocker.
 - Aucun secret dans les images Docker.
 
+## 6.5 Comportement en l'absence de worker GPU
+
+Lorsqu'un workflow `process` est lancé alors qu'aucun worker GPU n'écoute la queue `gpu` (PC Windows offline et aucun pod cloud actif), le système doit retourner une **erreur explicite et actionnable**, conformément à l'exigence MH-INF-5.
+
+### Comportement attendu
+
+À l'invocation de `uv run road2track process <project-id>`, la CLI vérifie en pré-flight :
+
+1. Liste les workers actifs auprès du Temporal frontend (`describe_task_queue` sur `gpu`).
+2. Si zéro worker actif sur `gpu` :
+   - Sortie en erreur avec **code retour ≠ 0**.
+   - Message standardisé :
+     ```
+     [error] Aucun worker GPU disponible sur la queue 'gpu'.
+     Pour démarrer un pod cloud, lancez :
+       uv run road2track gpu spawn --provider runpod --gpu l40s --hours 2
+     Ou démarrez le worker local sur le PC Windows :
+       docker compose -f docker-compose.gpu.yml up -d
+     ```
+   - **Aucun provisioning automatique** n'est tenté. Aucun coût cloud n'est engagé sans action explicite de l'utilisateur.
+3. Si au moins un worker est actif sur `gpu`, le workflow démarre normalement.
+
+### Justification
+
+Voir [ADR-018](./08-decisions.md#adr-018--pas-de-provisioning-cloud-automatique-au-mvp). Au MVP, la prudence financière prime sur le confort. En V1+, on pourra introduire une option opt-in `--auto-spawn` qui provisionne automatiquement avec un budget plafonné.
+
 ## 7. Provider GPU abstraction
 
 ```python

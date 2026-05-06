@@ -468,6 +468,104 @@ Le pipeline est complexe et coûteux à tester. Les tests E2E doivent être éco
 
 ---
 
+## ADR-016 — Pas de détection automatique de lead-in en spéciale
+
+- **Statut** : accepté
+- **Date** : 2026-05-06
+- **Décideurs** : utilisateur, Claude
+- **Contexte de décision** : Review 1.
+
+### Contexte
+
+Pour un **circuit**, la détection automatique d'un lead-in (portion avant la boucle) est légitime parce que la boucle est une **propriété géométrique** identifiable (loop closure). Pour une **spéciale** (point-à-point), aucune propriété géométrique ne marque les bornes. La question s'est posée d'utiliser des heuristiques (stationarité prolongée, changement de régime de vitesse) pour détecter un éventuel lead-in/lead-out en spéciale.
+
+### Options considérées
+
+- **A. Détection automatique heuristique** (stationarité, vitesse moyenne). Risque d'erreurs silencieuses, complexité de tuning.
+- **B. L'utilisateur définit les bornes** par les actions start/stop de l'enregistrement. Fait foi.
+- **C. Markers explicites en V1** dans l'app native (boutons "marquer début / fin").
+
+### Décision
+
+**B au MVP**, **C en V1** (optionnel, opt-in). Aucune détection automatique de lead-in en spéciale.
+
+### Justification
+
+L'utilisateur sait quand commence et finit son stage. L'auto-détection ajoute de la complexité pour un gain incertain et des erreurs silencieuses possibles. La règle est : "circuit = propriété géométrique, spéciale = utilisateur fait foi".
+
+### Conséquences
+
+- ✅ Pipeline plus simple.
+- ✅ Comportement prévisible.
+- ❌ Si l'utilisateur démarre l'enregistrement trop tôt, la trajectoire entière est traitée (lead-in inclus).
+- 🔧 **Mitigation** : documentation utilisateur claire ; markers explicites en V1.
+
+---
+
+## ADR-017 — Synchronisation Record3D ↔ Sensor Logger via timestamps UTC
+
+- **Statut** : accepté
+- **Date** : 2026-05-06
+- **Décideurs** : utilisateur, Claude
+- **Contexte de décision** : Review 1.
+
+### Contexte
+
+Au POC, on agrège les flux de deux apps iOS distinctes (Record3D et Sensor Logger) parce qu'aucune ne capture tout ce dont on a besoin. La question s'est posée de la **synchronisation temporelle** entre ces deux flux.
+
+### Options considérées
+
+- **A. Alignement par timestamps UTC** : les deux apps partagent l'horloge système iPhone (sub-ms), donc les timestamps wall-clock sont alignés par construction.
+- **B. Calibration manuelle par "clap des mains"** : l'utilisateur produit un signal détectable dans les deux flux. UX bizarre.
+- **C. Cross-corrélation IMU/ARKit** comme procédure systématique : robuste mais coûteux.
+
+### Décision
+
+**A en premier lieu, C en fallback**. Si une dérive > 100 ms est détectée à l'ingestion, on calcule un offset constant par cross-corrélation entre les pics IMU (Sensor Logger) et les pics d'accélération extraits des poses ARKit (Record3D). Cas C n'est jamais demandé à l'utilisateur, c'est automatique.
+
+### Conséquences
+
+- ✅ UX triviale pour l'utilisateur (rien à faire).
+- ✅ Robustesse via le fallback.
+- ❌ Une étape de validation à coder dans `ingest_session`.
+- 🔧 À l'It. 2 (app native), le problème disparaît : un seul flux unifié.
+
+---
+
+## ADR-018 — Pas de provisioning cloud automatique au MVP
+
+- **Statut** : accepté
+- **Date** : 2026-05-06
+- **Décideurs** : utilisateur, Claude
+- **Contexte de décision** : Review 1.
+
+### Contexte
+
+Quand l'utilisateur lance `uv run road2track process` alors que le PC GPU est offline et qu'aucun pod cloud n'est actif, deux comportements sont possibles : provisionner automatiquement un pod cloud, ou retourner une erreur explicite et laisser l'utilisateur déclencher manuellement.
+
+### Options considérées
+
+- **A. Provisioning automatique** (transparent, magique) : confort maximal mais engage de l'argent sans confirmation.
+- **B. Erreur explicite avec commande à lancer** : l'utilisateur garde le contrôle financier.
+- **C. Confirmation interactive** (`--yes` requis) : compromis, mais ajoute friction sur chaque run.
+
+### Décision
+
+**B au MVP. Option A en V1+ via `--auto-spawn` (opt-in, avec budget plafonné).**
+
+### Justification
+
+Au MVP solo, la **prudence financière** prime sur le confort. Un coût cloud non anticipé est plus dommageable qu'une erreur claire. L'auto-spawn deviendra envisageable quand on aura : (a) une UX mature pour les budgets, (b) des limites configurables, (c) un suivi temps réel des dépenses.
+
+### Conséquences
+
+- ✅ Aucun coût engagé sans action explicite.
+- ✅ Erreur informative et actionnable (cf. [`05-infrastructure.md#65-comportement-en-labsence-de-worker-gpu`](./05-infrastructure.md#65-comportement-en-labsence-de-worker-gpu)).
+- ❌ Une commande supplémentaire à connaître.
+- 🔧 **Mitigation** : la CLI affiche directement la commande à copier-coller dans le message d'erreur.
+
+---
+
 ## Index
 
 | ADR | Titre | Statut |
@@ -487,6 +585,9 @@ Le pipeline est complexe et coûteux à tester. Les tests E2E doivent être éco
 | 013 | uv comme gestionnaire de dépendances | accepté |
 | 014 | MinIO comme stockage objet | accepté |
 | 015 | Tests E2E sur dataset jouet | accepté |
+| 016 | Pas de détection automatique de lead-in en spéciale | accepté |
+| 017 | Synchronisation Record3D ↔ Sensor Logger via timestamps UTC | accepté |
+| 018 | Pas de provisioning cloud automatique au MVP | accepté |
 
 ---
 

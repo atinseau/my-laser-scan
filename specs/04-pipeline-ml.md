@@ -23,10 +23,16 @@ Chaque phase est modélisée par un workflow Temporal. Voir [`02-architecture.md
 
 Étapes :
 1. Validation du contenu : vidéo HEVC/MP4, dossier `depth/` LiDAR, fichier de poses ARKit, JSON Sensor Logger.
-2. Vérification de cohérence temporelle : tous les flux ont des timestamps qui se chevauchent.
-3. Extraction des métadonnées : durée, FPS, résolution, type d'iPhone, version iOS.
-4. Upload des fichiers bruts vers MinIO sous `s3://raw/<project_id>/<segment_id>/`.
-5. Insertion d'une entrée `Segment` dans Postgres avec `status=ingested`.
+2. **Synchronisation des deux flux Record3D + Sensor Logger** (POC uniquement, voir MH-CAP-1bis) :
+   1. Extraction des timestamps UTC depuis les deux exports.
+   2. Vérification que les deux flux référencent la même horloge (même ordre de grandeur d'epoch).
+   3. Si les timestamps UTC sont cohérents (cas par défaut), alignement direct.
+   4. Si une dérive est détectée (offset > 100 ms), calcul d'un **offset constant** par cross-corrélation entre les pics de l'IMU (Sensor Logger) et les pics d'accélération extraits des poses ARKit (Record3D). Application de l'offset.
+   5. À partir de l'It. 2 (app native), cette étape devient triviale car un seul flux unifié.
+3. Vérification de cohérence temporelle : tous les flux ont des timestamps qui se chevauchent après alignement.
+4. Extraction des métadonnées : durée, FPS, résolution, type d'iPhone, version iOS.
+5. Upload des fichiers bruts vers MinIO sous `s3://raw/<project_id>/<segment_id>/`.
+6. Insertion d'une entrée `Segment` dans Postgres avec `status=ingested`.
 
 ### 2.2 Fusion capteurs
 
@@ -48,14 +54,21 @@ Chaque phase est modélisée par un workflow Temporal. Voir [`02-architecture.md
 
 **Implémentation** : `packages/geo/fusion/ekf.py`. Voir aussi [`09-questions-ouvertes.md`](./09-questions-ouvertes.md) pour le choix entre EKF custom et lib existante.
 
-### 2.3 Détection circuit / spéciale
+### 2.3 Détection circuit / spéciale + troncature lead-in (circuit uniquement)
 
-**Activité** : `detect_kind`
+**Activité** : `detect_kind_and_trim`
 **Queue** : `cpu`
 **Input** : `TrajectoryRef`
-**Output** : `TrackKind` (`circuit` ou `speciale`), bornes éventuelles (lead-in à tronquer)
+**Output** : `TrackKind` (`circuit` ou `speciale`), `TrajectoryRef` éventuellement tronqué
 
-#### Algorithme
+#### Principe
+
+| Cas | Comportement |
+|---|---|
+| **Circuit** (loop closure détectée) | Détection automatique de la boucle. Si lead-in présent, **troncature automatique**. La trajectoire conservée = la boucle uniquement. |
+| **Spéciale** (aucune loop closure) | **Trajectoire conservée = trajectoire ingérée**. Pas de détection de lead-in/lead-out. L'utilisateur est responsable d'avoir démarré et arrêté l'enregistrement aux bornes effectives du stage (cf. MH-DET-3 dans [`01-cahier-des-charges.md`](./01-cahier-des-charges.md)). En It. 2+, l'app native pourra exposer des markers explicites pour flagger les bornes après-coup (SH-IOS-2bis), mais l'algorithme reste passif. Voir [ADR-016](./08-decisions.md#adr-016--pas-de-détection-automatique-de-lead-in-en-spéciale). |
+
+#### Algorithme — détection loop closure (cas circuit)
 
 ```python
 # packages/geo/loop_detection/detect.py
@@ -80,10 +93,10 @@ for i in range(0, N - 1):
         break
 
 if best is None:
-    return TrackKind.SPECIALE, None
+    return TrackKind.SPECIALE, trajectory  # trajectoire ingérée fait foi
 else:
     i, j = best
-    return TrackKind.CIRCUIT, (i, j)  # tronquer à [i, j]
+    return TrackKind.CIRCUIT, trajectory[i:j]  # tronquer à [i, j]
 ```
 
 Cas gérés :
@@ -91,8 +104,8 @@ Cas gérés :
 | Cas | Description | Résultat |
 |---|---|---|
 | A | Capture revient au point de départ | `circuit`, garde tout `[0, N]` (premier match `i=0`) |
-| B | Lead-in puis boucle (départ pas dans la boucle) | `circuit`, garde `[i, j]` |
-| C | Aucun croisement | `speciale`, garde tout |
+| B | Lead-in puis boucle (départ pas dans la boucle) | `circuit`, garde `[i, j]`, lead-in jeté |
+| C | Aucun croisement | `speciale`, garde la trajectoire telle quelle |
 
 ### 2.4 Tuilage
 
