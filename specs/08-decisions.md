@@ -188,7 +188,7 @@ Pour 10-15 km, un seul GPU (même 24 Go) ne tient pas en VRAM. Il faut une strat
 
 - **Statut** : accepté
 - **Date** : 2026-05-05
-- **Décideurs** : utilisateur
+- **Décideurs** : utilisateur, Claude
 
 ### Contexte
 
@@ -216,7 +216,7 @@ AC vanilla et Content Manager (CM) acceptent des formats légèrement différent
 
 - **Statut** : accepté
 - **Date** : 2026-05-05
-- **Décideurs** : utilisateur
+- **Décideurs** : utilisateur, Claude
 
 ### Contexte
 
@@ -232,6 +232,8 @@ L'utilisateur ne doit pas avoir à choisir manuellement entre "circuit" et "spé
 
 **A — Détection automatique.** Algorithme dans [`04-pipeline-ml.md#23-détection-circuit-spéciale`](./04-pipeline-ml.md#23-détection-circuit--spéciale).
 
+> **Note** : la portée de cette détection est limitée à la **distinction circuit vs spéciale**. Pour les spéciales, aucune détection supplémentaire (lead-in, lead-out) n'est faite — voir [ADR-016](#adr-016--pas-de-détection-automatique-de-lead-in-en-spéciale) qui complète cet ADR.
+
 ### Conséquences
 
 - ✅ Effort utilisateur nul.
@@ -245,7 +247,7 @@ L'utilisateur ne doit pas avoir à choisir manuellement entre "circuit" et "spé
 
 - **Statut** : accepté
 - **Date** : 2026-05-05
-- **Décideurs** : utilisateur
+- **Décideurs** : utilisateur, Claude
 
 ### Contexte
 
@@ -301,11 +303,13 @@ L'app iOS est un investissement de 4-5 semaines. Au POC, on doit valider le risq
 
 - **Statut** : accepté
 - **Date** : 2026-05-05
-- **Décideurs** : utilisateur
+- **Décideurs** : utilisateur, Claude
 
 ### Contexte
 
-Le Mac M3 Max possède un GPU Apple Silicon performant. La question s'est posée de l'utiliser pour des activités ML compatibles MPS.
+Cet ADR est le **corollaire topologique** d'[ADR-004](#adr-004--cuda-only-pas-de-metalmps) : puisque le ML est CUDA-only et que le Mac M3 Max n'a pas de GPU NVIDIA, le compute GPU sort par construction de la machine d'orchestration.
+
+Le Mac M3 Max possède toutefois un GPU Apple Silicon performant. La question s'est posée de l'utiliser pour des activités ML compatibles MPS.
 
 ### Options considérées
 
@@ -329,7 +333,7 @@ Le Mac M3 Max possède un GPU Apple Silicon performant. La question s'est posée
 
 - **Statut** : accepté
 - **Date** : 2026-05-05
-- **Décideurs** : utilisateur
+- **Décideurs** : utilisateur, Claude
 
 ### Contexte
 
@@ -358,7 +362,7 @@ Les workers GPU (PC local, pods cloud) doivent atteindre Temporal et MinIO sur l
 
 - **Statut** : accepté
 - **Date** : 2026-05-05
-- **Décideurs** : Claude (validé utilisateur)
+- **Décideurs** : utilisateur, Claude
 
 ### Contexte
 
@@ -387,7 +391,7 @@ Le projet a plusieurs couches : domaine (entités), adapters (libs ML, stockage,
 
 - **Statut** : accepté
 - **Date** : 2026-05-05
-- **Décideurs** : utilisateur
+- **Décideurs** : utilisateur, Claude
 
 ### Contexte
 
@@ -587,7 +591,7 @@ Le pipeline GPU enchaîne pour chaque tuile : `train_gs` (sortie 2-5 Go) → `ex
 
 **A — Session activities** au MVP, avec validation technique au POC.
 
-Si le SDK Python Temporal pose des frictions techniques pour les sessions (compatibilité, stabilité), fallback sur **B** au MVP, et on raffine en V1.
+**Critère de bascule vers B (fallback)** : si après **3 jours d'effort** sur le POC, les sessions Temporal Python ne s'exécutent pas de manière fiable (échec de stickiness sur le worker, perte des fichiers locaux entre activités, bugs SDK), on bascule sur **B** (activité monolithique `process_tile_gpu`) et on crée un ADR de remplacement qui acte le changement.
 
 ### Conséquences
 
@@ -605,29 +609,110 @@ Si le SDK Python Temporal pose des frictions techniques pour les sessions (compa
 
 ---
 
+## ADR-020 — Stratégie de cache des modèles ML (mix pré-bake + MinIO)
+
+- **Statut** : accepté
+- **Date** : 2026-05-06
+- **Décideurs** : utilisateur, Claude
+- **Contexte de décision** : Review 5.
+
+### Contexte
+
+Le pipeline ML utilise plusieurs modèles pré-entraînés volumineux (Mask2Former ~500 Mo, gsplat checkpoints, NeILF++…). À chaque démarrage d'un worker — surtout un pod RunPod neuf — il faut éviter de retélécharger tous les modèles depuis Internet (5-10 min de cold start, consommation de bande passante).
+
+### Options considérées
+
+- **A. Volume Docker partagé** : persistant entre redémarrages du container. Simple sur PC, ne marche pas pour pods cloud éphémères.
+- **B. Pré-bake dans l'image Docker** : modèles téléchargés au build, inclus dans l'image. Démarrage très rapide, mais image énorme (5-10 Go) et rebuild à chaque update.
+- **C. Cache MinIO** : workers téléchargent depuis MinIO via Tailscale. Centralisé mais dépend de la connectivité Tailscale au boot.
+- **D. Mix** : pré-bake les modèles essentiels (toujours nécessaires, peu changeants), cache MinIO pour les modèles plus volumineux ou variables.
+
+### Décision
+
+**D — Mix.**
+
+Pré-bakés dans l'image `gpu_worker` :
+- Mask2Former (segmentation de base, toujours utilisée).
+- gsplat checkpoints d'init (petits).
+
+Cachés dans MinIO sous `s3://intermediates/models/` :
+- NeILF++ (lourd, susceptible de changer entre versions).
+- Modèles spécifiques de finetuning futur.
+
+Les workers téléchargent depuis MinIO via Tailscale au premier usage et gardent un cache local pour la durée de vie du worker.
+
+### Conséquences
+
+- ✅ Cold start rapide : les modèles essentiels sont déjà là.
+- ✅ Image Docker raisonnable (~3 Go au lieu de 10 Go).
+- ✅ Mise à jour des modèles "lourds" sans rebuild d'image (juste push vers MinIO).
+- ❌ Logique de cache à coder dans `packages/ml/`.
+- ❌ Dépend de Tailscale au boot pour le cache MinIO.
+- 🔧 **Mitigation** : si MinIO inaccessible, fallback automatique téléchargement HuggingFace en dernier recours.
+
+---
+
+## ADR-021 — Stockage des secrets via `.env` au MVP
+
+- **Statut** : accepté
+- **Date** : 2026-05-06
+- **Décideurs** : utilisateur, Claude
+- **Contexte de décision** : Review 5.
+
+### Contexte
+
+Le projet manipule plusieurs credentials sensibles : access keys MinIO, API key RunPod, auth key Tailscale, mots de passe Postgres. Au MVP solo, il faut une solution simple, sécurisée, sans surdimensionnement.
+
+### Options considérées
+
+- **A. Fichier `.env` non versionné** + `.env.example` versionné comme template.
+- **B. 1Password CLI (`op`)** : secrets jamais en plain text sur disque, lookup à la volée.
+- **C. HashiCorp Vault local** : pour multi-utilisateurs, surdimensionné solo.
+
+### Décision
+
+**A au MVP.** Migration vers **B** envisageable en V1+ si plusieurs machines ou utilisateurs sont impliqués.
+
+Convention :
+- `.env` à la racine, jamais committé.
+- `.env.example` committé, contient toutes les clés avec des valeurs vides ou explicatives.
+- `.gitignore` strict sur `.env`.
+- Secrets aussi en variables d'environnement injectées dans les containers Docker via `env_file:`.
+
+### Conséquences
+
+- ✅ Simplicité maximale.
+- ✅ Compatible avec docker-compose et Tailscale.
+- ❌ Si le `.env` fuit (commit accidentel, partage), tous les secrets sont compromis simultanément.
+- 🔧 **Mitigation** : pre-commit hook qui détecte les patterns secrets et bloque le commit.
+
+---
+
 ## Index
 
-| ADR | Titre | Statut |
-|---|---|---|
-| 001 | Stack Python (vs TypeScript+Bun) | accepté |
-| 002 | Temporal comme orchestrateur | accepté |
-| 003 | Infra locale-first | accepté |
-| 004 | CUDA only, pas de Metal/MPS | accepté |
-| 005 | Tuilage spatial pour les longs tronçons | accepté |
-| 006 | Content Manager comme cible d'installation | accepté |
-| 007 | Détection automatique circuit/spéciale | accepté |
-| 008 | Multi-passe pour amélioration qualité | accepté |
-| 009 | Pas d'app iOS au POC | accepté |
-| 010 | Mac orchestrateur sans GPU compute | accepté |
-| 011 | Tailscale comme bridge réseau | accepté |
-| 012 | Architecture hexagonale en couches | accepté |
-| 013 | uv comme gestionnaire de dépendances | accepté |
-| 014 | MinIO comme stockage objet | accepté |
-| 015 | Tests E2E sur dataset jouet | accepté |
-| 016 | Pas de détection automatique de lead-in en spéciale | accepté |
-| 017 | Synchronisation Record3D ↔ Sensor Logger via timestamps UTC | accepté |
-| 018 | Pas de provisioning cloud automatique au MVP | accepté |
-| 019 | Session activities pour chaîner le pipeline GPU d'une tuile | accepté |
+| ADR | Titre | Statut | Origine |
+|---|---|---|---|
+| 001 | Stack Python (vs TypeScript+Bun) | accepté | initial |
+| 002 | Temporal comme orchestrateur | accepté | initial |
+| 003 | Infra locale-first | accepté | initial |
+| 004 | CUDA only, pas de Metal/MPS | accepté | initial |
+| 005 | Tuilage spatial pour les longs tronçons | accepté | initial |
+| 006 | Content Manager comme cible d'installation | accepté | initial |
+| 007 | Détection automatique circuit/spéciale | accepté | initial |
+| 008 | Multi-passe pour amélioration qualité | accepté | initial |
+| 009 | Pas d'app iOS au POC | accepté | initial |
+| 010 | Mac orchestrateur sans GPU compute | accepté | initial |
+| 011 | Tailscale comme bridge réseau | accepté | initial |
+| 012 | Architecture hexagonale en couches | accepté | initial |
+| 013 | uv comme gestionnaire de dépendances | accepté | initial |
+| 014 | MinIO comme stockage objet | accepté | initial |
+| 015 | Tests E2E sur dataset jouet | accepté | initial |
+| 016 | Pas de détection automatique de lead-in en spéciale | accepté | Review 1 |
+| 017 | Synchronisation Record3D ↔ Sensor Logger via timestamps UTC | accepté | Review 1 |
+| 018 | Pas de provisioning cloud automatique au MVP | accepté | Review 1 |
+| 019 | Session activities pour chaîner le pipeline GPU d'une tuile | accepté | Review 2 |
+| 020 | Stratégie de cache des modèles ML (mix pré-bake + MinIO) | accepté | Review 5 |
+| 021 | Stockage des secrets via `.env` au MVP | accepté | Review 5 |
 
 ---
 

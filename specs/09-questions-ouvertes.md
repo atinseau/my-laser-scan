@@ -2,6 +2,17 @@
 
 > Liste vivante de décisions techniques à trancher au fil des itérations. Quand une question est tranchée, elle quitte ce document et devient un ADR dans [`08-decisions.md`](./08-decisions.md).
 
+## État du suivi
+
+| État | Nombre | Détail |
+|---|---|---|
+| 🟢 Ouvertes | 11 | Décisions encore à prendre |
+| 🟡 En cours | 1 | QO-007 (validation Wine) |
+| ✅ Tranchées | 4 | QO-002a → POC, QO-005 → ADR-020, QO-008 → ADR-019, QO-015 → ADR-021 |
+| **Total** | **16** | |
+
+Mis à jour : Review 5 (2026-05-06).
+
 ## Convention
 
 Chaque question a :
@@ -32,19 +43,24 @@ Chaque question a :
 
 ---
 
-### QO-002 — Format des poses iPhone
+### QO-002a — Format des poses iPhone (POC)
+
+- **Statut** : tranchée → on prend Record3D format JSON tel quel (poses 6DoF translation + quaternion par frame).
+- **Date** : 2026-05-06
+
+**Décision** : au POC et au MVP, on consomme directement le format de poses produit par Record3D (cf. [`06-modele-donnees.md §4.2`](./06-modele-donnees.md#42-données-de-capture-segment-record3d--sensor-logger)). Pas de transformation amont nécessaire.
+
+### QO-002b — Format des poses iPhone (app native It. 2)
 
 - **Statut** : ouverte
-- **Itération cible** : 0 (POC) puis 2 (app native)
-- **Bloque** : ingestion
+- **Itération cible** : 2
+- **Bloque** : conception du format de capture de l'app native
 
-**Contexte** : Record3D exporte les poses ARKit dans un format propre (JSON simple). En V1+ (app native), on aura le choix entre :
-- Stocker des poses 6DoF brutes (translation + quaternion).
-- Stocker un **ARWorldMap** ARKit qui inclut les anchors visuels (utile pour la relocalisation cas B).
+**Contexte** : pour l'app iOS native (It. 2), on aura le choix sur le format de stockage des poses :
 
 **Options** :
-- A. Toujours poses brutes ; relocalisation via matching de features visuelles côté backend.
-- B. ARWorldMap stocké + poses dérivées ; relocalisation via ARKit lui-même.
+- A. Toujours poses brutes (translation + quaternion) ; relocalisation via matching de features visuelles côté backend.
+- B. **ARWorldMap** ARKit stocké + poses dérivées ; relocalisation via ARKit lui-même.
 - C. Hybride.
 
 **À trancher** lors de l'It. 2 quand on conçoit l'app native.
@@ -89,19 +105,8 @@ Chaque question a :
 
 ### QO-005 — Cache des modèles ML
 
-- **Statut** : ouverte
-- **Itération cible** : 1
-- **Bloque** : démarrage à froid des workers
-
-**Contexte** : Mask2Former et autres modèles HF font plusieurs Go. Au démarrage d'un pod cloud, télécharger ces modèles ralentit considérablement.
-
-**Options** :
-- A. Volume Docker partagé (pour le PC local).
-- B. **Pré-bake** des modèles dans l'image Docker `gpu_worker`.
-- C. **Cache MinIO** : les workers téléchargent depuis le MinIO local (rapide via Tailscale).
-- D. Mix : pré-bake du minimum, le reste via MinIO.
-
-**À trancher** quand on construit le Dockerfile final.
+- **Statut** : tranchée → [ADR-020](./08-decisions.md#adr-020--stratégie-de-cache-des-modèles-ml-mix-pré-bake--minio)
+- **Décision** : option D — pré-bake des modèles essentiels (Mask2Former, gsplat init) dans l'image `gpu_worker` ; cache MinIO pour les modèles plus volumineux ou variables (NeILF++).
 
 ---
 
@@ -253,18 +258,8 @@ Chaque question a :
 
 ### QO-015 — Stockage des secrets
 
-- **Statut** : ouverte
-- **Itération cible** : 1
-- **Bloque** : opérations multi-machines
-
-**Contexte** : credentials MinIO, RunPod API key, Tailscale auth key, Postgres passwords.
-
-**Options** :
-- A. **`.env` non versionné** + `.env.example` versionné. Simple, suffisant pour solo.
-- B. **1Password CLI** intégré. Plus sécurisé, ajoute une dépendance.
-- C. **HashiCorp Vault** local. Overkill.
-
-**Préférence MVP** : A. Migrer vers B en V1+ si plusieurs utilisateurs.
+- **Statut** : tranchée → [ADR-021](./08-decisions.md#adr-021--stockage-des-secrets-via-env-au-mvp)
+- **Décision** : option A — `.env` non versionné + `.env.example` versionné au MVP. Migration vers 1Password CLI envisageable en V1+ si plusieurs machines/utilisateurs.
 
 ---
 
