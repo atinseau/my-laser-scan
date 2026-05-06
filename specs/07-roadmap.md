@@ -9,7 +9,7 @@
 │  POC qualité│ │  Pipeline    │ │  Multi-      │ │  Qualité    │ │  Passage à  │
 │  texturale  │→│  bout-en-    │→│  segment +   │→│  texturale  │→│  l'échelle  │
 │             │ │  bout        │ │  app iOS     │ │  V2         │ │  10-15 km   │
-│  ~1-2 sem   │ │  ~3 sem      │ │  ~4-5 sem    │ │  ~3-4 sem   │ │  variable   │
+│  ~1-2 sem   │ │  ~5-6 sem    │ │  ~4-5 sem    │ │  ~3-4 sem   │ │  variable   │
 └─────────────┘ └──────────────┘ └──────────────┘ └─────────────┘ └─────────────┘
 ```
 
@@ -61,6 +61,12 @@ Exclu (pour les itérations suivantes) :
 - [ ] `uv run road2track ingest ./captures/balade_test` enregistre un projet et un segment.
 - [ ] `uv run road2track process <project-id>` lance le workflow et produit un mesh + textures.
 - [ ] Le résultat est ouvert dans Blender et **visuellement validé** par l'utilisateur.
+- [ ] **Validation technique du pattern session activities** Temporal (cf. [ADR-019](./08-decisions.md#adr-019--session-activities-pour-chaîner-le-pipeline-gpu-dune-tuile)). Si KO, fallback documenté dans un ADR de remplacement.
+- [ ] **Cross-corrélation IMU/ARKit** opérationnelle comme fallback de la sync UTC (cf. [ADR-017](./08-decisions.md#adr-017--synchronisation-record3d--sensor-logger-via-timestamps-utc)).
+- [ ] **Lint CI** qui vérifie que `pipeline/workflows/` n'importe aucun adapter (cf. [`02-architecture.md §2`](./02-architecture.md#règles-dinclusion)).
+- [ ] **Health checks** au démarrage des workers `cpu_worker` et `gpu_worker`.
+- [ ] **Mesure empirique du temps GS 30k iter** pour valider ou ajuster le critère "< 6 h pour 1 km" du MVP (cf. `04 §3.3`).
+- [ ] Production de `specs/reviews/0-end-of-iteration.md` à la fin.
 
 ### Critère go/no-go
 
@@ -70,8 +76,9 @@ Exclu (pour les itérations suivantes) :
 | Les textures sont issues des photos | Pas de stylisé ; pixels reconnaissables. |
 | La qualité est jugée "acceptable" | Validation visuelle subjective dans Blender. |
 | Le pipeline est rejouable | Re-run sur le même dataset → résultat équivalent. |
+| Couverture de tests sur `core` et `geo` | ≥ 80% sur les modules touchés. |
 
-**Si NO-GO** : on ré-évalue la stack ML (alternatives : Mip-Splatting, Gaussian Frosting, photogrammétrie classique COLMAP+Reality Capture, NeRFacto). Voir [`09-questions-ouvertes.md`](./09-questions-ouvertes.md).
+**Si NO-GO** : on ré-évalue la stack ML. Alternatives à explorer dans l'ordre : Mip-Splatting, Gaussian Frosting, photogrammétrie classique (COLMAP + Reality Capture), NeRFacto. Voir [`09-questions-ouvertes.md`](./09-questions-ouvertes.md).
 
 ### Dépendances
 
@@ -83,7 +90,7 @@ Exclu (pour les itérations suivantes) :
 
 ## Itération 1 — Pipeline bout-en-bout (MVP cœur)
 
-**Durée estimée** : 3 semaines.
+**Durée estimée** : 5 à 6 semaines (le scope inclut EKF, segmentation, decimation, FBX, ksEditor, AI line, packaging CM, tests E2E — réalisme solo dev).
 
 ### Objectif unique
 
@@ -118,20 +125,26 @@ Exclu :
 
 - [ ] Tous les workflows / activités décrits dans `04-pipeline-ml.md` pour le mono-tuile.
 - [ ] Templates Jinja des fichiers AC.
-- [ ] Worker `windows-tools` qui compile le KN5.
+- [ ] Worker `windows-tools` (natif Windows sur le PC) qui compile le KN5 via `ksEditor.exe`.
+- [ ] 🧪 **Prototype `wine-worker`** (image Docker Linux + Wine + ksEditor) en parallèle, à valider sur 5 KN5 de référence avant la fin de l'itération. Si validé → permet de retirer la dépendance PC en V2 (cf. QO-007).
+- [ ] **Validation empirique de l'orientation des axes** (Y-up ou Z-up) pour AC, fixée définitivement (cf. `06 §1`).
+- [ ] **Commande `make backup-outputs`** opérationnelle (copie incrémentale datée des outputs MinIO vers un dossier local).
 - [ ] Suite de tests E2E sur dataset jouet (200 m).
 - [ ] Documentation utilisateur dans `README.md` mise à jour.
 - [ ] Premier circuit installé via Content Manager et rouler dedans.
+- [ ] Production de `specs/reviews/1-end-of-iteration.md` à la fin.
 
 ### Critères go/no-go
 
 | Critère | Cible |
 |---|---|
 | Tronçon supporté | 1 km |
-| Temps de traitement | < 6 h sur RTX 4090 |
+| Temps de traitement | < 6 h sur RTX 4090 (à confirmer ou assouplir selon mesures POC) |
 | Détection circuit/spéciale | Fonctionne sur 5 cas de test |
 | Format de sortie | Package CM installable |
 | Roulabilité | On peut faire un tour, l'AI line est cohérente |
+| Lint CI workflows/adapters | Aucun import interdit détecté |
+| Couverture tests | ≥ 80% sur `core`, `geo` ; ≥ 60% sur `pipeline` |
 
 ### Risques principaux
 
@@ -179,6 +192,8 @@ Exclu :
 - [ ] Multi-passe qui améliore une zone testée mesurablement (PSNR + visuel).
 - [ ] Worker `windows-tools` exposant aussi des activités plus riches si besoin.
 - [ ] Documentation iOS dans `apps/ios/README.md`.
+- [ ] Production de `specs/reviews/2-end-of-iteration.md` à la fin.
+- [ ] Couverture tests : maintien ≥ 80% sur `core`, `geo` ; ≥ 60% sur `pipeline` ; nouveaux modules couverts à ces seuils.
 
 ### Critères go/no-go
 
@@ -221,6 +236,8 @@ Exclu :
 - [ ] Méthodologie de validation qualitative documentée.
 - [ ] 3 circuits de référence générés et catalogués.
 - [ ] Article de blog/post privé décrivant la méthode (interne, pas de publication).
+- [ ] Production de `specs/reviews/3-end-of-iteration.md` à la fin.
+- [ ] Couverture tests maintenue aux seuils de 02-architecture.md §8.
 
 ### Critères go/no-go
 
@@ -263,8 +280,10 @@ Exclu (peut-être V2) :
 
 - [ ] Pipeline 12 km validé (tronçon de référence : Col du Galibier descente p.ex.).
 - [ ] Compteur de coûts intégré au CLI.
-- [ ] Web UI status fonctionnelle.
+- [ ] Web UI status fonctionnelle (choix du stack frontend tranché — cf. QO-011).
 - [ ] Documentation de provisioning RunPod.
+- [ ] **Review finale** transverse du projet, audit complet : production de `specs/reviews/final-review.md`. Lie chaque constat aux exigences de `01-cahier-des-charges.md` et aux ADRs.
+- [ ] Couverture tests maintenue.
 
 ### Critères go/no-go
 
@@ -279,7 +298,9 @@ Exclu (peut-être V2) :
 
 ## Au-delà (V2)
 
-Après l'It. 4, le produit est complet pour le persona. Les évolutions possibles :
+Après l'It. 4, le produit est **stable et complet** pour le persona. Pas d'itération de stabilisation supplémentaire entre It. 4 et V2 : la qualité doit être atteinte au fil de l'eau, à chaque itération, en respectant les couvertures de tests et les reviews de qualité. La V2 démarre directement sur les nouvelles features.
+
+Évolutions possibles :
 
 - **Anonymisation automatique** (CH-PRI-1 du cahier des charges).
 - **Édition légère** post-génération (CH-EDI-1).

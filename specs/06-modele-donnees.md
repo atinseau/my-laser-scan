@@ -7,7 +7,7 @@
 - Tous les schemas Pydantic v2 vivent dans `packages/core/src/road2track_core/entities/` ou `value_objects/`.
 - Tous les manifests JSON portent un champ `schema_version: int`.
 - Les coordonnées géographiques sont en **WGS84** (EPSG:4326) au stockage. L'espace de travail interne est **ENU local** au projet.
-- Les axes 3D internes sont **Y-up** (compatible Blender et AC). Les conversions depuis ARKit (qui est Y-up aussi) sont triviales.
+- Les axes 3D internes sont **Y-up** (compatible Blender et ARKit). Pour AC, la convention exacte (Y-up vs Z-up) **est à confirmer empiriquement au POC** — selon les paramètres FBX export et la version ksEditor, l'orientation peut nécessiter une rotation 90°. Un test de chargement in-game à la fin de l'It. 1 valide définitivement le choix.
 - Les unités sont **mètres**, **secondes**, **radians** internes ; les angles utilisateur (heading, etc.) en degrés.
 - Les timestamps sont **UTC ISO 8601** avec millisecondes.
 - Les identifiants sont des **ULID** (sortable, lisibles).
@@ -36,18 +36,18 @@ class Project(BaseModel):
     status: ProjectStatus
     kind: TrackKind | None            # déterminé après détection
     origin_wgs84: GPSCoord | None     # origine ENU choisie au 1er ingest
+    current_workflow_id: str | None = None  # workflow Temporal actif (si status=PROCESSING)
     notes: str = ""
 ```
 
 ### 2.2 `Segment`
 
-Une plage continue de capture. Plusieurs segments peuvent être ajoutés à un projet.
+Une plage continue de capture. Plusieurs segments peuvent être ajoutés à un projet. Au POC, un segment **agglomère les deux flux** Record3D + Sensor Logger ; à partir de l'It. 2 (app native), un segment est un flux unifié.
 
 ```python
 class SegmentSource(StrEnum):
-    RECORD_3D       = "record_3d"
-    SENSOR_LOGGER   = "sensor_logger"
-    NATIVE_APP_V1   = "native_app_v1"
+    RECORD_3D_PLUS_SENSOR_LOGGER = "record3d_plus_sensor_logger"   # POC + MVP (apps externes)
+    NATIVE_APP_V1                = "native_app_v1"                 # à partir de l'It. 2
 
 class Segment(BaseModel):
     schema_version: Literal[1] = 1
@@ -56,7 +56,7 @@ class Segment(BaseModel):
     source: SegmentSource
     captured_at: datetime
     duration_s: float
-    raw_paths: dict[str, str]           # ex. {"video": "s3://raw/proj/seg/video.mp4", ...}
+    raw_paths: dict[str, str]           # ex. {"video": "s3://raw/proj/seg/video.mp4", "imu": "s3://...", ...}
     fps: float
     resolution: tuple[int, int]
     has_lidar: bool
@@ -108,14 +108,17 @@ class TileBounds(BaseModel):
     bbox_enu: tuple[tuple[float, float, float], tuple[float, float, float]]
 
 class TileStatus(StrEnum):
-    PENDING        = "pending"
-    SEGMENTING     = "segmenting"
-    TRAINING_GS    = "training_gs"
-    EXTRACTING     = "extracting_mesh"
-    BAKING         = "baking"
-    PBR            = "estimating_pbr"
-    READY          = "ready"
-    FAILED         = "failed"
+    PENDING             = "pending"
+    SELECTING_KEYFRAMES = "selecting_keyframes"
+    SEGMENTING          = "segmenting"            # Mask2Former
+    TRAINING_GS         = "training_gs"
+    EXTRACTING_MESH     = "extracting_mesh"
+    BAKING              = "baking"
+    ESTIMATING_PBR      = "estimating_pbr"
+    SEGMENTING_MESH     = "segmenting_mesh"
+    DECIMATING_UV       = "decimating_uv"
+    READY               = "ready"
+    FAILED              = "failed"
 
 class Tile(BaseModel):
     schema_version: Literal[1] = 1
@@ -135,6 +138,21 @@ Le résultat final livrable.
 class TrackKind(StrEnum):
     CIRCUIT  = "circuit"
     SPECIALE = "speciale"
+
+class ContentManagerMetadata(BaseModel):
+    """Métadonnées exposées dans ui/ui_track.json."""
+    schema_version: Literal[1] = 1
+    name: str
+    description: str
+    tags: list[str] = []
+    country: str | None = None
+    city: str | None = None
+    length_m: float
+    width_m: float
+    pitboxes: int = 1
+    run: Literal["circuit", "hillclimb"]
+    author: str = "road2track"
+    version: str = "0.1.0"
 
 class Track(BaseModel):
     schema_version: Literal[1] = 1
@@ -246,15 +264,28 @@ Sortie de `select_keyframes`. Référence sur les frames retenues.
     {
       "index": 142,
       "timestamp_s": 4.733,
+      "is_validation": false,
       "image_uri": "s3://intermediates/.../frame_00142.jpg",
       "depth_uri": "s3://intermediates/.../depth_00142.npy",
       "pose": { "translation": [...], "quaternion": [...] },
       "intrinsics": [fx, fy, cx, cy, width, height],
       "sharpness": 412.7
+    },
+    {
+      "index": 152,
+      "timestamp_s": 5.067,
+      "is_validation": true,
+      "image_uri": "s3://intermediates/.../frame_00152.jpg",
+      "depth_uri": "s3://intermediates/.../depth_00152.npy",
+      "pose": { "translation": [...], "quaternion": [...] },
+      "intrinsics": [fx, fy, cx, cy, width, height],
+      "sharpness": 398.2
     }
   ]
 }
 ```
+
+**Convention** : 1 frame sur 10 a `is_validation: true` et est exclue du training GS, utilisée pour mesurer PSNR/LPIPS (cf. [`04-pipeline-ml.md §7`](./04-pipeline-ml.md#7-métriques-de-qualité)).
 
 ### 4.4 `trajectory.parquet`
 
@@ -365,10 +396,26 @@ Format binaire AC. Encodage généré via `packages/ac_export/ai_line/`.
 
 ### 5.5 Cas spéciale — `extension/hill_climb.ini`
 
-Pour les tracés point-à-point, dépendance CSP. Définit :
-- `START_POINT` : coordonnées du début.
-- `FINISH_LINE` : trigger de fin.
-- `TIMING_MODE` : `point_to_point`.
+Pour les tracés point-à-point, dépendance CSP. Définit le mode de timing point-à-point, le déclencheur de départ et la ligne d'arrivée.
+
+Exemple minimal :
+
+```ini
+[GENERAL]
+TIMING_MODE=point_to_point
+
+[START_POINT]
+POSITION=0, 0, 0
+DIRECTION=0, 0, 1
+WIDTH=10
+
+[FINISH_LINE]
+POSITION=2348.5, 12.3, 8421.7
+DIRECTION=0.7, 0, 0.7
+WIDTH=10
+```
+
+Coordonnées en repère ENU local du projet (l'origine = `Project.origin_wgs84`). La `DIRECTION` est le vecteur tangent à la trajectoire au point, normalisé.
 
 ## 6. Versioning des schemas
 
@@ -394,6 +441,7 @@ projects
   status varchar
   kind varchar nullable
   origin_lat double, origin_lon double, origin_alt double
+  current_workflow_id text nullable    -- workflow Temporal actif (si status=PROCESSING)
   metadata jsonb
   created_at timestamptz
   updated_at timestamptz
