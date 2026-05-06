@@ -154,10 +154,11 @@ Base : `nvidia/cuda:12.4.0-runtime-ubuntu22.04`
 3. `uv sync --extra gpu` pour installer torch + gsplat + 2DGS + transformers + open3d + pytorch3d.
 4. Installer Tailscale (binaire officiel).
 5. Installer Blender 4.2 LTS (téléchargement direct).
-6. Pour l'export AC : Wine + ksEditor (alternative au worker Windows).
-7. `ENTRYPOINT ["uv", "run", "python", "-m", "services.gpu_worker"]`
+6. `ENTRYPOINT ["uv", "run", "python", "-m", "services.gpu_worker"]`
 
 Image taggée `road2track/gpu-worker:<version>`, poussée vers un registry privé (Docker Hub privé, GHCR, ou Tailscale-hosted).
+
+**Note importante** : `gpu-worker` est une image **CUDA pure**. Elle **ne contient pas** Wine ni ksEditor. La compilation KN5 est gérée par une image séparée `road2track/wine-worker` (cf. §5.4 option B) ou par le worker Windows natif.
 
 ### 5.2 Lancement sur le PC Windows
 
@@ -272,10 +273,37 @@ Note : une seule queue `windows-tools` peu importe la techno (PC natif ou Wine c
 - **MagicDNS activé** → on accède aux machines par leur nom (`mac.tail-xxxx.ts.net`).
 - **Tags ACL** :
   - `tag:orchestrator` (le Mac)
-  - `tag:gpu-worker` (le PC, les pods)
-- **ACL** :
+  - `tag:gpu-worker` (le PC, les pods cloud)
+- **Règles ACL** :
   - `tag:gpu-worker` peut atteindre `tag:orchestrator` sur ports `7233` (Temporal), `9000` (MinIO), `4222` (NATS), `5432` (Postgres app si besoin pour debug).
   - `tag:orchestrator` peut atteindre `tag:gpu-worker` sur n/a (le worker initie toujours les connexions).
+
+#### Exemple de policy ACL Tailscale
+
+À déposer dans la console Tailscale (Settings → Access Controls) :
+
+```json
+{
+  "tagOwners": {
+    "tag:orchestrator": ["autogroup:admin"],
+    "tag:gpu-worker":   ["autogroup:admin"]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src":    ["tag:gpu-worker"],
+      "dst":    ["tag:orchestrator:7233", "tag:orchestrator:9000", "tag:orchestrator:4222"]
+    },
+    {
+      "action": "accept",
+      "src":    ["autogroup:admin"],
+      "dst":    ["*:*"]
+    }
+  ]
+}
+```
+
+Cette policy garantit que les workers GPU n'ont accès **qu'aux ports applicatifs nécessaires** sur le Mac, jamais au shell ni à d'autres services exposés involontairement.
 
 ### 6.2 Auth keys
 
@@ -350,7 +378,7 @@ Implémentations :
 
 | Classe | Comportement |
 |---|---|
-| `LocalDesktopProvider` | "Persistant" : `ensure_running()` ping le PC Windows via Tailscale ; si offline, peut tenter Wake-on-LAN (configurable) ; `shutdown()` est no-op (l'utilisateur arrête manuellement). |
+| `LocalDesktopProvider` | "Persistant" : `ensure_running()` ping le PC Windows via Tailscale et retourne online/offline. Pas de Wake-on-LAN, pas de boot automatique — c'est à l'utilisateur de s'assurer que le PC est allumé. `shutdown()` est no-op. |
 | `RunPodProvider` | "À la demande" : appel API RunPod, polling jusqu'à READY, retourne le `WorkerHandle`. `shutdown()` détruit le pod. |
 | `VastProvider` | Idem RunPod. |
 
@@ -395,6 +423,35 @@ Politique simple :
 - **MinIO** : sync rsync vers un disque externe ou NAS, manuelle.
 - **Pas de backup automatique des `intermediates`** : ils sont reproductibles depuis les `raw`.
 - **Backup des `outputs`** : oui, ce sont les livrables.
+
+### Commande `make backup-outputs` (MVP)
+
+Une commande dédiée, simple et manuelle, copie le bucket `outputs/` vers un dossier local daté :
+
+```bash
+make backup-outputs
+# Équivalent à :
+# mc mirror minio/outputs/ ~/Documents/Road2Track/backups/$(date +%Y-%m-%d)/
+```
+
+Ou via la CLI :
+```bash
+uv run road2track maintenance backup-outputs --dest ~/MyBackups/
+```
+
+**Comportement** :
+- Copie incrémentale (skip les fichiers déjà présents et inchangés).
+- Crée un sous-dossier daté `YYYY-MM-DD/` au premier backup du jour.
+- Log les fichiers copiés et la taille totale.
+- **Pas d'auto-cron au MVP** : l'utilisateur lance quand il veut.
+- Promu en cron quotidien en V1 si besoin.
+
+**Ce qui est protégé** :
+- ✅ Les `outputs/` (zips Content Manager) — livrables uniques.
+
+**Ce qui n'est pas protégé** :
+- ❌ Les `raw/` (encore récupérables depuis l'iPhone si conservées).
+- ❌ Les `intermediates/` (régénérables depuis `raw/`).
 
 ## 11. Coûts
 
@@ -449,8 +506,11 @@ make migrate
 
 ## 13. Points d'attention
 
+- **Synchronisation NTP** entre Mac et PC : indispensable pour que les timestamps des logs cross-machine soient corrélables. Activé par défaut sur macOS et Windows 10/11. Vérifier avec `timedatectl` (Linux) / `w32tm /query /status` (Windows) en cas de doute.
 - **Veille du PC Windows** : à désactiver, sinon les workers tombent. Configuration énergie "performances maximales".
 - **Mises à jour Docker Desktop** : peuvent casser le runtime NVIDIA. Tester après chaque update.
 - **Versions CUDA** : la version dans l'image Docker doit être ≤ à la version pilote NVIDIA installée sur le PC. Documenter dans le README de `gpu_worker`.
-- **Disque** : MinIO peut grossir vite (les `.ply` font des Go). Surveiller, prune les `intermediates` anciens.
+- **Disque** : MinIO peut grossir vite (les `.ply` font des Go). Le health check des workers vérifie l'espace libre du volume MinIO :
+  - < 10% libre → log warning.
+  - < 5% libre → exit en erreur (le worker refuse de démarrer).
 - **Tailscale exit nodes** : ne pas activer accidentellement (sinon tout le trafic du Mac passerait par le PC).

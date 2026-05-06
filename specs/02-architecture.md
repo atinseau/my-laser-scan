@@ -459,7 +459,8 @@ Chaque worker (cpu, gpu, windows-tools) exécute une **séquence de vérificatio
 |---|---|
 | `cpu_worker` | Connexion Postgres, MinIO, NATS, Temporal frontend joignable |
 | `gpu_worker` | Tous les checks `cpu_worker` + CUDA dispo + version driver compatible + mémoire VRAM ≥ seuil |
-| `windows-worker` | Tous les checks `cpu_worker` + `ksEditor.exe` exécutable |
+| `windows-worker` (natif Windows) | Tous les checks `cpu_worker` + `ksEditor.exe` exécutable |
+| `wine-worker` (Linux + Wine) | Tous les checks `cpu_worker` + Wine fonctionnel + `ksEditor.exe` lance via Wine. Image Docker **distincte** de `gpu_worker`. À valider en parallèle dès It. 1 (cf. [`05-infrastructure.md §5.4 option B`](./05-infrastructure.md#54-compilation-kn5--cas-particulier)). |
 
 En cas d'échec : exit code ≠ 0 + log d'erreur explicite. Pas de "fail silent".
 

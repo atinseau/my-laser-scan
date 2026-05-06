@@ -31,8 +31,21 @@ Chaque phase est modélisée par un workflow Temporal. Voir [`02-architecture.md
    5. À partir de l'It. 2 (app native), cette étape devient triviale car un seul flux unifié.
 3. Vérification de cohérence temporelle : tous les flux ont des timestamps qui se chevauchent après alignement.
 4. Extraction des métadonnées : durée, FPS, résolution, type d'iPhone, version iOS.
-5. Upload des fichiers bruts vers MinIO sous `s3://raw/<project_id>/<segment_id>/`.
-6. Insertion d'une entrée `Segment` dans Postgres avec `status=ingested`.
+5. **Drop du track audio** de la vidéo Record3D (on ne l'utilise pas, mais il pèse ~10% du fichier vidéo) — re-multiplexage HEVC vidéo seule.
+6. Upload des fichiers bruts vers MinIO sous `s3://raw/<project_id>/<segment_id>/`.
+7. Insertion d'une entrée `Segment` dans Postgres avec `status=ingested`.
+
+#### Détail de la cross-corrélation IMU/ARKit (étape 2.4)
+
+Si l'offset entre timestamps UTC dépasse 100 ms :
+
+1. On extrait la **magnitude** de l'accélération du flux Sensor Logger : `||a_imu(t)||`.
+2. On extrait la **dérivée seconde de la position** des poses ARKit : `||d²p_arkit(t)/dt²||`.
+3. On rééchantillonne les deux à 100 Hz par interpolation linéaire.
+4. Cross-corrélation via `scipy.signal.correlate(..., mode='same')`.
+5. L'offset = position du max de la corrélation.
+6. **Si l'amplitude max < seuil (0.3)** (utilisateur statique, pas de pic identifiable) → log warning, on continue avec offset = 0 et on assume les UTC alignés.
+7. **Si l'offset trouvé est > 5 s** → erreur fatale (incohérence majeure entre les flux), l'utilisateur doit re-capturer.
 
 ### 2.2 Fusion capteurs
 
@@ -49,7 +62,7 @@ Chaque phase est modélisée par un workflow Temporal. Voir [`02-architecture.md
    - Mesures : ARKit pose (mesure relative), GPS (mesure absolue WGS84 → ENU), IMU (prédiction), baromètre (z).
 4. Détection des outliers GPS (jumps > 10 m) avec rejet par chi² test.
 5. Lissage backward (RTS smoother) pour améliorer la cohérence temporelle.
-6. Géoréférencement : choix d'un point d'origine ENU local (premier GPS valide), conversion de toute la trajectoire.
+6. Géoréférencement : choix d'un point d'origine ENU local. Le **premier fix GPS dont la précision est < 10 m** (HDOP raisonnable) est choisi. Pendant la période de cold start GPS (typiquement 30-60 s après démarrage), les poses ARKit sont conservées en repère relatif et l'origine ENU est calculée **a posteriori** par alignement (résolution moindre carré sur les segments où GPS valide et ARKit coexistent). Si aucun fix GPS valide n'est obtenu sur toute la session, l'activité échoue avec un message demandant de capturer en environnement plus ouvert.
 7. Sauvegarde de la trajectoire en MinIO sous `s3://intermediates/<project_id>/<segment_id>/trajectory.parquet`.
 
 **Implémentation** : `packages/geo/fusion/ekf.py`. Voir aussi [`09-questions-ouvertes.md`](./09-questions-ouvertes.md) pour le choix entre EKF custom et lib existante.
@@ -202,6 +215,24 @@ Configuration cible (à raffiner au POC) :
 
 VRAM observée : ~16-20 Go pour 1500 keyframes.
 
+#### Validation empirique du nombre d'itérations au POC
+
+Le chiffre de 30 000 itérations est un **point de départ** issu de la littérature gsplat. Au POC, on **mesure** :
+- Le temps total de training pour 30k iter sur RTX 4090.
+- Les métriques PSNR/LPIPS atteintes.
+- Le rapport qualité/temps si on s'arrête à 15k, 20k, 25k.
+
+**Décision** : si 30k iter dépasse manifestement la cible "< 6 h pour 1 km" du MVP (cf. `01 §7.2`), on **réduit à 15-20k au MVP** et on remonte progressivement en V1+. Le critère de succès (qualité visuelle acceptable) reste prioritaire sur le critère de temps.
+
+#### Gestion VRAM et OOM
+
+Le worker monitore la VRAM toutes les 1000 itérations. **En cas d'OOM** (Out Of Memory) pendant le training :
+- L'activité **échoue** avec un message d'erreur clair indiquant la tuile concernée et la VRAM consommée au moment du crash.
+- Temporal réessaie une fois (avec backoff). Si re-échec → l'activité reste en `failed`.
+- Le message recommande à l'utilisateur de **réduire la taille des tuiles** dans la config (`TILE_LEN_M`) et de relancer.
+
+Pas d'auto-split au MVP — la simplicité prime. Auto-split envisageable en V1+ si le besoin se confirme.
+
 ### 3.4 Extraction de mesh
 
 **Activité** : `extract_mesh`
@@ -275,6 +306,16 @@ Avantages :
 
 Implémentation : custom dans `packages/ml/bake/multiview.py`, accéléré CUDA via PyTorch3D pour la projection/visibilité.
 
+#### Résolution et atlas
+
+| Surface | Résolution texture | Densité texels |
+|---|---|---|
+| Route (`ROAD`) | 8192×8192 par tuile | ~512 px/m linéaire |
+| Bordures (`KERB`) | 4096×4096 par tuile | ~256 px/m |
+| Environnement (herbe, mur, lointain) | 4096×4096 par tuile | variable |
+
+**Atlas par tuile au MVP** (1 atlas = 1 mesh = 1 tuile). Atlas global considéré en V2 pour réduire le draw call count dans AC. Choix tracé dans [`09-questions-ouvertes.md QO-006`](./09-questions-ouvertes.md#qo-006--atlas-de-textures-par-tuile-vs-global).
+
 ### 3.8 Estimation PBR
 
 **Activité** : `estimate_pbr`
@@ -331,11 +372,31 @@ Méthode :
 
 Étapes :
 1. Calcul de la **largeur de route** à chaque sample (par projection latérale sur le mesh).
-2. Calcul d'une trajectoire optimale simple : minimisation de courbure + rester à `0.5 × largeur` du centre.
+2. Calcul d'une trajectoire optimale simple : minimisation de courbure + rester proche du centre.
 3. Format binaire `fast_lane.ai` selon spec AC.
-4. Pit lane : décalage latéral simple, peut être au même endroit pour le MVP.
 
 (Pour la V1, on pourra utiliser des outils comme **AI Line Helper** ou un solveur plus sophistiqué.)
+
+### 4.3bis Pit lane et timings (start/finish, hot_lap_start)
+
+AC requiert une `pit_lane.ai` valide et au moins **un pit box** pour qu'une track se charge. Comme la capture vient d'une balade publique, il n'y a pas de vraie pit lane → on en génère une **synthétique minimale**.
+
+#### Pit lane
+
+- **Tracé** : centerline shifté latéralement de **4 m** côté droit (configurable selon le pays / sens de circulation détecté via le magnétomètre).
+- **Sample** : 1 point tous les 1 m, comme la `fast_lane.ai`.
+- **Format** : `pit_lane.ai` binaire AC.
+
+#### Pit box
+
+- **Position** : 1 pit box au point de départ détecté (origine de la trajectoire pour spéciale, point `i` de la loop closure pour circuit).
+- **Orientation** : alignée sur le heading de la trajectoire au point.
+- **Dimensions** : 6 × 16 m standard AC.
+
+#### Hot lap start
+
+- **Pour circuit** : `hot_lap_start` est positionné **30 m avant la ligne de départ** (côté entrée de la boucle), pour donner un élan d'avant-tour.
+- **Pour spéciale** : pas de `hot_lap_start`. À la place, CSP gère un `START_POINT` (déclencheur début de timing) au point A, et un `FINISH_LINE` (déclencheur fin de timing) au point B. Voir `extension/hill_climb.ini` dans le format Content Manager (cf. [`06-modele-donnees.md §5.5`](./06-modele-donnees.md#55-cas-spéciale--extensionhill_climbini)).
 
 ### 4.4 Génération des fichiers AC
 
@@ -424,11 +485,21 @@ Implémentation détaillée différée à l'itération 2 (cf. [`07-roadmap.md`](
 | Métrique | Mesure | Seuil acceptable |
 |---|---|---|
 | PSNR sur frames de validation | Comparaison render GS vs photo | > 25 dB |
+| LPIPS sur frames de validation | Distance perceptuelle | < 0.20 (MVP), < 0.15 (V1) |
 | Cohérence centerline | Écart au centerline OSM (si dispo) | < 1 m |
 | Continuité inter-tuiles | Discontinuité moyenne sur la zone fondue | < 5 cm |
 | Couverture de la route | % de la trajectoire couverte par >= 5 keyframes | > 90% |
-| Latence pipeline (1 km) | Temps d'horloge bout-en-bout | < 6 h MVP |
+| Latence pipeline (1 km) | Temps d'horloge bout-en-bout | < 6 h MVP (à valider au POC, possible assouplissement) |
 | Roulabilité subjective | Test utilisateur | "convaincant en jeu" |
+
+### Construction du validation set
+
+Le calcul de PSNR/LPIPS exige un **held-out set** de frames non vues pendant le training GS :
+
+- À l'étape `select_keyframes` (§3.1), **1 frame sur 10** est marquée `is_validation: true` dans le `keyframes.json`.
+- Le training GS exclut ces frames de son dataset.
+- Après training, on **render** le GS depuis les poses des frames de validation et on compare aux images réelles.
+- Les métriques sont sauvegardées avec le `SceneRef` (champ `metrics: {psnr_mean, lpips_mean, ...}`).
 
 ## 8. Limitations connues
 

@@ -75,6 +75,13 @@ class FusedPose(BaseModel):
     velocity: tuple[float, float, float]
     confidence: float       # [0, 1]
 
+    @property
+    def heading(self) -> float:
+        """Cap absolu en radians, dérivé du quaternion (rotation autour de l'axe vertical)."""
+        # Conversion standard quat → yaw (heading) en repère ENU.
+        # Implémentation dans packages/geo/projections/axes.py
+        ...
+
 class Trajectory(BaseModel):
     schema_version: Literal[1] = 1
     project_id: ProjectId
