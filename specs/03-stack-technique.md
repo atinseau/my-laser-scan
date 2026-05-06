@@ -38,6 +38,10 @@
 | Tests containers | testcontainers | dernière stable | Postgres / MinIO en intégration |
 | Lint / format | ruff | dernière stable | Rapide, remplace black + isort + flake8 |
 | Type checking | pyright (strict) | dernière stable | Plus strict que mypy, supporte Pydantic v2 |
+| Pre-commit | pre-commit | dernière stable | Framework de hooks Git locaux + CI |
+| Pre-commit — secrets | gitleaks | dernière stable | Détection de credentials avant commit (cf. ADR-021) |
+| CI lint imports workflows | scripts/check_workflow_imports.py (custom) | — | Bloque l'import d'un adapter dans un workflow Temporal (cf. ADR-012, `02-architecture.md §2`) |
+| Container scanning | Trivy | dernière stable | Audit CVE des images Docker `gpu-worker`, `wine-worker` |
 | Logs | structlog | dernière stable | JSON, contextual |
 | Observabilité | OpenTelemetry | dernière stable | Standard |
 | Stack obs locale | Grafana + Loki + Tempo | dernière stable | Local, intégrable docker-compose |
@@ -196,6 +200,9 @@ Le workflow route les activités vers la bonne queue. Cette procédure est **un 
 | `uv run ruff format` | Format. |
 | `uv run pyright` | Type check strict. |
 | `uv run pytest` | Tests. |
+| `pre-commit run --all-files` | Exécute tous les hooks (ruff, pyright, gitleaks). |
+| `gitleaks detect` | Scan des secrets sur le repo (en pre-commit + CI). |
+| `trivy image road2track/gpu-worker:latest` | Audit CVE de l'image GPU (en CI build). |
 | `make up` | Lance l'infra docker-compose. |
 | `make down` | Arrête l'infra. |
 | `make gpu-up` | Active le worker GPU local (sur le PC). |

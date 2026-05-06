@@ -6,12 +6,12 @@
 
 | État | Nombre | Détail |
 |---|---|---|
-| 🟢 Ouvertes | 11 | Décisions encore à prendre |
+| 🟢 Ouvertes | 12 | Décisions encore à prendre |
 | 🟡 En cours | 1 | QO-007 (validation Wine) |
 | ✅ Tranchées | 4 | QO-002a → POC, QO-005 → ADR-020, QO-008 → ADR-019, QO-015 → ADR-021 |
-| **Total** | **16** | |
+| **Total** | **17** | |
 
-Mis à jour : Review 5 (2026-05-06).
+Mis à jour : Review finale (2026-05-06).
 
 ## Convention
 
@@ -262,6 +262,23 @@ Chaque question a :
 - **Décision** : option A — `.env` non versionné + `.env.example` versionné au MVP. Migration vers 1Password CLI envisageable en V1+ si plusieurs machines/utilisateurs.
 
 ---
+
+### QO-016 — Plan B si la validation Wine échoue
+
+- **Statut** : ouverte
+- **Itération cible** : V2 (déclenchée seulement si QO-007 invalide Wine)
+- **Bloque** : portabilité totale du projet à long terme
+
+**Contexte** : si la validation de Wine pour `compile_kn5` (cf. [QO-007](#qo-007--validation-de-wine-pour-compile_kn5)) **échoue**, on reste avec le PC Windows comme dépendance permanente. Acceptable au MVP/V1, mais bloque l'objectif "portabilité totale" en V2.
+
+**Options** (à explorer si le moment vient) :
+- A. **Garder le PC Windows** en dépendance permanente. Statu quo.
+- B. **Reverse-engineer du format KN5** (long, risqué, propriétaire).
+- C. **Format alternatif AC** : exporter en FBX direct + `.ini` sans compilation KN5, en s'appuyant sur Custom Shaders Patch qui peut charger des modèles non-compilés. À étudier.
+- D. **VM Windows persistante sur cloud** (Azure/AWS), pour les utilisateurs sans PC. Cher mais transparent.
+- E. **Communauté Kunos / Content Manager** : demander à la communauté un compileur KN5 maison existant.
+
+**À déclencher** uniquement si QO-007 conclut négativement à l'It. 1 ou 2.
 
 ## Procédure pour fermer une question
 

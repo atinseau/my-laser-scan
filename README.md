@@ -191,16 +191,20 @@ Toute la documentation produit / technique vit dans [`specs/`](./specs/). Pour d
 
 | Catégorie | Détail | Statut |
 |---|---|---|
-| **Must** Capture (Record3D + Sensor Logger) | Apps existantes au POC, native en V1 | 🟡 prévu |
-| **Must** Détection circuit/spéciale automatique | Algorithme défini | 🟡 prévu |
-| **Must** Pipeline 100% automatique | Temporal workflow | 🟡 prévu |
+| **Must** Capture (Record3D + Sensor Logger) | Apps existantes au POC, native en It. 2 | 🟡 prévu |
+| **Must** Synchronisation Record3D ↔ Sensor Logger | UTC + fallback cross-corrélation IMU (ADR-017) | 🟡 prévu (It. 0) |
+| **Must** Détection circuit auto + troncature lead-in | Algo loop closure ; spéciale = utilisateur fait foi (ADR-007/016) | 🟡 prévu |
+| **Must** Pipeline 100% automatique | Temporal workflow + 19 activités | 🟡 prévu |
+| **Must** Session activities GPU (sticky worker) | Évite les transferts MinIO redondants (ADR-019) | 🟡 prévu (It. 0) |
 | **Must** Tuilage spatial (long tronçons) | 800 m / 50 m d'overlap | 🟡 prévu (It. 4) |
-| **Must** Export Content Manager | zip + ui_track.json | 🟡 prévu (It. 1) |
+| **Must** Export Content Manager | zip + ui_track.json + AI line + pit lane | 🟡 prévu (It. 1) |
 | **Must** Infra locale-first (Docker Compose) | Temporal + Postgres + MinIO + NATS | 🟡 prévu (It. 0) |
-| **Must** Bridge cloud GPU (RunPod via Tailscale) | Provider abstraction | 🟡 prévu (It. 4) |
+| **Must** Bridge cloud GPU (RunPod via Tailscale) | Provider abstraction (LocalDesktop + RunPod) | 🟡 prévu (It. 4) |
+| **Must** Pas de provisioning auto cloud | Erreur explicite + commande à lancer (ADR-018) | 🟡 prévu (It. 1) |
 | **Must** Qualité photoréaliste (PBR baked) | gsplat → 2DGS → bake | 🟡 prévu (It. 0/3) |
-| **Should** App iOS native | SwiftUI + ARKit | ⚪ futur (It. 2) |
+| **Should** App iOS native | Replace Record3D + Sensor Logger | ⚪ futur (It. 2) |
 | **Should** Pause/reprise + multi-passe | Logique modes A/B/C | ⚪ futur (It. 2) |
+| **Should** Markers explicites spéciale (start/end) | Optionnel, opt-in | ⚪ futur (It. 2) |
 | **Should** API HTTP FastAPI | Sur Tailscale | ⚪ futur (It. 2) |
 | **Should** Web UI status | Temps réel via NATS | ⚪ futur (It. 4) |
 | **Could** Anonymisation auto | YOLO + inpainting | ⚪ futur (V2) |
