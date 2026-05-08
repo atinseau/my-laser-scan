@@ -210,6 +210,9 @@ Configuration cible (à raffiner au POC) :
 | Random init | Non — on initialise à partir du nuage LiDAR |
 | Loss | L1 + SSIM (lambda=0.2) + depth supervision LiDAR |
 | Mask passants/véhicules | Oui (issu de la segmentation) |
+| **Mixed precision (FP16)** | **Activée** (cf. [ADR-022](./08-decisions.md#adr-022--stratégie-doptimisation-de-coût-sans-perte-de-qualité)). Gain de vitesse +30 à +50% sans dégradation qualité. À valider au POC. |
+| **Checkpointing MinIO** | **Toutes les 5 000 itérations** (cf. [ADR-022](./08-decisions.md#adr-022--stratégie-doptimisation-de-coût-sans-perte-de-qualité)). Permet la reprise après éviction d'un pod spot, perte max 15 min. |
+| **Reprise depuis checkpoint** (multi-passe) | À partir de l'It. 2, le training d'une passe N+1 reprend du checkpoint de la passe N au lieu de redémarrer (cf. [ADR-008](./08-decisions.md#adr-008--multi-passe-pour-amélioration-qualité) + ADR-022). |
 
 **Spécificité route** : on contraint la majorité des splats à rester proches de la surface route (priors géométriques du LiDAR), évitant le foisonnement de gaussiennes "flottantes" dans le ciel ou hors de la zone d'intérêt.
 

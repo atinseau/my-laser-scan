@@ -688,6 +688,91 @@ Convention :
 
 ---
 
+## ADR-022 — Stratégie d'optimisation de coût sans perte de qualité
+
+- **Statut** : accepté
+- **Date** : 2026-05-06
+- **Décideurs** : utilisateur, Claude
+- **Contexte de décision** : analyse de coût post-review finale.
+
+### Contexte
+
+L'analyse des coûts du pipeline montre que ~55% du coût d'une tuile vient de `train_gs` (1,40 € sur 2,55 € total sur L40S), et qu'un projet de 12 km coûte ~38 € en cloud baseline. L'utilisateur demande des **optimisations de coût sans aucune dégradation de qualité visuelle**.
+
+### Options considérées (toutes appliquées simultanément, par ordre d'impact)
+
+#### 1. Spot / preemptible pricing + checkpointing GS
+
+Les instances "spot" cloud (RunPod, vast.ai) sont 40-70% moins chères que les on-demand, au prix d'une éviction possible. Avec un **checkpoint MinIO toutes les ~5 000 itérations** dans `train_gs`, l'éviction d'un pod fait perdre au maximum 15 min de calcul, on relance et on reprend.
+
+#### 2. Mixed precision FP16 dans `train_gs`
+
+gsplat supporte le training en précision mixte FP16/FP32. **Aucune dégradation de qualité observée** dans les benchmarks officiels gsplat. Gain de vitesse : +30 à +50% sur GPUs Ampere/Hopper.
+
+#### 3. Continue-from-checkpoint pour le multi-passe
+
+Quand l'utilisateur fait un multi-passe qualité (ADR-008), le training GS de la passe N+1 **reprend depuis le checkpoint de la passe N** au lieu de redémarrer à zéro. Économie 60-70% sur les passes additionnelles.
+
+#### 4. Multi-provider sélection au run-time (V1+)
+
+Interroger plusieurs providers cloud (RunPod, vast.ai, Hyperstack) en temps réel et choisir le moins cher pour la spec demandée.
+
+#### 5. GPU tier-based selection (V1+)
+
+Sub-diviser la queue `gpu` en `gpu-light` (segment, A4000 / 3090 — moins cher), `gpu-standard` (extract_mesh, bake), `gpu-heavy` (train_gs, L40S/A100). Évite le surdimensionnement.
+
+#### 6. Cache CUDA kernels + modèles dans l'image gpu-worker
+
+Pré-compilation des extensions CUDA gsplat et pré-bake des modèles essentiels dans l'image (cf. ADR-020) → cold start de pod cloud divisé par 5 (de 2-5 min à 30-60 s).
+
+#### 7. Compression Zstandard des intermédiaires sur MinIO
+
+Les `scene.ply` (3-5 GB) compressent bien (asphalte uniforme). Gain ~50% sur taille + temps de transfert.
+
+#### 8. Auto-shutdown agressif des pods cloud (V1+)
+
+Détection que la queue GPU est vide → shutdown automatique du pod après timeout (ex. 5 min idle). Évite de payer pour des minutes inutiles.
+
+#### 9. Pipeline parallelism inter-tuiles (V1+)
+
+Profiter du fait que pendant qu'une tuile est en `train_gs` (GPU), une autre peut être en `select_keyframes` (CPU) ou `decimate_uv` (CPU). Améliore le wall-clock total → moins d'heures cloud louées.
+
+### Décision
+
+**Adoption de l'ensemble des 9 leviers**, étalés sur les itérations selon l'effort et la valeur :
+
+| Levier | Itération | Effort | Gain attendu |
+|---|---|---|---|
+| #2 Mixed precision FP16 | **POC (It. 0)** | Trivial (1 flag) | -30% sur train_gs |
+| #1 Spot + checkpointing | **It. 1** | ~2 jours | -50% sur cloud spend |
+| #3 Continue-from-checkpoint multi-passe | **It. 2** | 2-3 jours | -65% sur les passes additionnelles |
+| #6 Cache image | **It. 4** | ~3 h | -3 min/pod cold start |
+| #7 Compression Zstd | **It. 4** | 1 jour | -50% bande passante |
+| #4 Multi-provider | **It. 4** | 1 jour | -10 à -30% |
+| #5 GPU tiering | **It. 4** | 1 jour | -5 à -10% |
+| #8 Auto-shutdown | **It. 4** | 0,5 jour | -10% (idle) |
+| #9 Pipeline parallelism | **It. 4** | 1 jour | -15% wall-clock |
+
+### Conséquences
+
+- ✅ **Coût d'un projet 12 km baisse de ~38 € à ~10 €** (-74%) une fois tous les leviers appliqués, **sans aucune dégradation qualité**.
+- ✅ Coût d'une passe multi-passe baisse de 1,40 € à 0,50 € (-65%).
+- ✅ Cold start cloud divisé par 5.
+- ✅ Wall-clock total réduit de 15-20% par parallélisme inter-tuiles.
+- ❌ Complexité d'implémentation cumulée importante (au moins 7 jours de dev étalés).
+- ❌ Robustesse au spot pricing dépend du checkpointing fiable — à tester rigoureusement à l'It. 1.
+- 🔧 **Mitigation** : chaque levier est **autonome**. Si l'un casse, on désactive sans propagation.
+
+### Métriques de suivi
+
+À mesurer empiriquement à chaque itération qui livre un levier :
+- Coût € par projet (baseline vs après levier).
+- Wall-clock total.
+- Taux d'éviction spot (si applicable).
+- Qualité PSNR/LPIPS (doit rester stable, c'est le critère de la décision).
+
+---
+
 ## Index
 
 | ADR | Titre | Statut | Origine |
@@ -713,6 +798,7 @@ Convention :
 | 019 | Session activities pour chaîner le pipeline GPU d'une tuile | accepté | Review 2 |
 | 020 | Stratégie de cache des modèles ML (mix pré-bake + MinIO) | accepté | Review 5 |
 | 021 | Stockage des secrets via `.env` au MVP | accepté | Review 5 |
+| 022 | Stratégie d'optimisation de coût sans perte de qualité | accepté | Analyse coûts |
 
 ---
 

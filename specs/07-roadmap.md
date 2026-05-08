@@ -66,6 +66,7 @@ Exclu (pour les itérations suivantes) :
 - [ ] **Lint CI** qui vérifie que `pipeline/workflows/` n'importe aucun adapter (cf. [`02-architecture.md §2`](./02-architecture.md#règles-dinclusion)).
 - [ ] **Health checks** au démarrage des workers `cpu_worker` et `gpu_worker`.
 - [ ] **Mesure empirique du temps GS 30k iter** pour valider ou ajuster le critère "< 6 h pour 1 km" du MVP (cf. `04 §3.3`).
+- [ ] **Mixed precision FP16 activée** dans `train_gs` (cf. [ADR-022](./08-decisions.md#adr-022--stratégie-doptimisation-de-coût-sans-perte-de-qualité), levier #2). Gain attendu : +30 à +50% de vitesse, qualité validée stable.
 - [ ] Production de `specs/reviews/0-end-of-iteration.md` à la fin.
 
 ### Critère go/no-go
@@ -129,6 +130,7 @@ Exclu :
 - [ ] 🧪 **Prototype `wine-worker`** (image Docker Linux + Wine + ksEditor) en parallèle, à valider sur 5 KN5 de référence avant la fin de l'itération. Si validé → permet de retirer la dépendance PC en V2 (cf. QO-007).
 - [ ] **Validation empirique de l'orientation des axes** (Y-up ou Z-up) pour AC, fixée définitivement (cf. `06 §1`).
 - [ ] **Commande `make backup-outputs`** opérationnelle (copie incrémentale datée des outputs MinIO vers un dossier local).
+- [ ] **Spot pricing + checkpointing GS** opérationnel (cf. [ADR-022](./08-decisions.md#adr-022--stratégie-doptimisation-de-coût-sans-perte-de-qualité), levier #1) : checkpoint MinIO toutes les 5 000 iter, reprise automatique après éviction d'un pod spot. Gain attendu : -50% sur le cloud spend.
 - [ ] Suite de tests E2E sur dataset jouet (200 m).
 - [ ] Documentation utilisateur dans `README.md` mise à jour.
 - [ ] Premier circuit installé via Content Manager et rouler dedans.
@@ -192,6 +194,7 @@ Exclu :
 - [ ] Multi-passe qui améliore une zone testée mesurablement (PSNR + visuel).
 - [ ] Worker `windows-tools` exposant aussi des activités plus riches si besoin.
 - [ ] Documentation iOS dans `apps/ios/README.md`.
+- [ ] **Continue-from-checkpoint pour le multi-passe** (cf. [ADR-022](./08-decisions.md#adr-022--stratégie-doptimisation-de-coût-sans-perte-de-qualité), levier #3) : training de la passe N+1 reprend du checkpoint de la passe N. Gain attendu : -65% sur les passes additionnelles.
 - [ ] Production de `specs/reviews/2-end-of-iteration.md` à la fin.
 - [ ] Couverture tests : maintien ≥ 80% sur `core`, `geo` ; ≥ 60% sur `pipeline` ; nouveaux modules couverts à ces seuils.
 
@@ -282,6 +285,7 @@ Exclu (peut-être V2) :
 - [ ] Compteur de coûts intégré au CLI.
 - [ ] Web UI status fonctionnelle (choix du stack frontend tranché — cf. QO-011).
 - [ ] Documentation de provisioning RunPod.
+- [ ] **Optimisations cloud avancées** (cf. [ADR-022](./08-decisions.md#adr-022--stratégie-doptimisation-de-coût-sans-perte-de-qualité)) : leviers #4 (multi-provider), #5 (GPU tiering), #6 (cache image), #7 (compression Zstd), #8 (auto-shutdown), #9 (pipeline parallelism). Gain cumulé attendu : passer de ~14 € à ~10 € sur 12 km.
 - [ ] **Review finale** transverse du projet, audit complet : production de `specs/reviews/final-review.md`. Lie chaque constat aux exigences de `01-cahier-des-charges.md` et aux ADRs.
 - [ ] Couverture tests maintenue.
 
