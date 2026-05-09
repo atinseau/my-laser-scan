@@ -1,0 +1,37 @@
+[project]
+name = "road2track"
+version = "0.1.0"
+description = "Outil qui transforme une balade iPhone en circuit Assetto Corsa"
+requires-python = ">=3.11"
+
+[tool.uv.workspace]
+members = [
+    "packages/core",
+    "packages/geo",
+    "packages/ml",
+    "packages/storage",
+    "packages/ac_export",
+    "packages/cloud_bridge",
+    "packages/pipeline",
+    "services/cpu_worker",
+    "services/gpu_worker",
+    "services/api",
+    "services/cli",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-mock>=3.12",
+    "hypothesis>=6.95",
+    "ruff>=0.5",
+    "pyright>=1.1.350",
+    "pre-commit>=3.6",
+    "testcontainers>=4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"

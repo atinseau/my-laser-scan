@@ -1,0 +1,24 @@
+[project]
+name = "road2track-gpu-worker"
+version = "0.1.0"
+description = "Worker Temporal sur queue 'gpu' — exécute les activités CUDA (gsplat, 2DGS, segmentation, bake, PBR)"
+requires-python = ">=3.11"
+dependencies = [
+    "road2track-pipeline",
+]
+
+[project.optional-dependencies]
+gpu = [
+    "road2track-ml[all]",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.uv.sources]
+road2track-pipeline = { workspace = true }
+road2track-ml = { workspace = true }

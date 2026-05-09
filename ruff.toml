@@ -1,0 +1,33 @@
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = [
+    "E", "F", "W",   # pycodestyle + pyflakes
+    "I",              # isort
+    "N",              # naming (PEP 8)
+    "UP",             # pyupgrade
+    "ANN",            # annotations
+    "B",              # bugbear
+    "A",              # builtin shadowing
+    "C4",             # comprehensions
+    "T20",            # print statements
+    "PT",             # pytest style
+    "Q",              # quotes
+    "RET",            # returns
+    "SIM",            # simplify
+    "ARG",            # unused args
+    "PTH",            # pathlib
+]
+ignore = [
+    "ANN101",         # missing self type annotation
+    "ANN102",         # missing cls type annotation
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["ANN", "ARG"]
+"scripts/**" = ["T20"]
+
+[format]
+quote-style = "double"
+indent-style = "space"

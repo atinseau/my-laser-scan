@@ -1,0 +1,41 @@
+[project]
+name = "road2track-ml"
+version = "0.1.0"
+description = "Adapters ML — gsplat, 2DGS, segmentation, PBR, bake (cf. specs/02-architecture.md §4.3)"
+requires-python = ">=3.11"
+dependencies = [
+    "road2track-core",
+    "numpy>=1.26",
+    "pillow>=10.0",
+    "opencv-python-headless>=4.9",
+]
+
+# Extras lourds : à installer dans l'image gpu_worker uniquement.
+[project.optional-dependencies]
+gs = [
+    "torch>=2.3",
+    "gsplat>=1.0",
+]
+mesh = [
+    "torch>=2.3",
+]
+seg = [
+    "torch>=2.3",
+    "transformers>=4.40",
+]
+pbr = [
+    "torch>=2.3",
+]
+all = [
+    "road2track-ml[gs,mesh,seg,pbr]",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/road2track_ml"]
+
+[tool.uv.sources]
+road2track-core = { workspace = true }
