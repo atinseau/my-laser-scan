@@ -19,10 +19,7 @@ select = [
     "ARG",            # unused args
     "PTH",            # pathlib
 ]
-ignore = [
-    "ANN101",         # missing self type annotation
-    "ANN102",         # missing cls type annotation
-]
+ignore = []
 
 [lint.per-file-ignores]
 "tests/**" = ["ANN", "ARG"]

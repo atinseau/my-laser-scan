@@ -64,7 +64,7 @@ Exclu (pour les itérations suivantes) :
 - [ ] **Validation technique du pattern session activities** Temporal (cf. [ADR-019](./08-decisions.md#adr-019--session-activities-pour-chaîner-le-pipeline-gpu-dune-tuile)). Si KO, fallback documenté dans un ADR de remplacement.
 - [ ] **Cross-corrélation IMU/ARKit** opérationnelle comme fallback de la sync UTC (cf. [ADR-017](./08-decisions.md#adr-017--synchronisation-record3d--sensor-logger-via-timestamps-utc)).
 - [x] **Lint CI** qui vérifie que `pipeline/workflows/` n'importe aucun adapter (cf. [`02-architecture.md §2`](./02-architecture.md#règles-dinclusion)).
-- [ ] **Health checks** au démarrage des workers `cpu_worker` et `gpu_worker`.
+- [x] **Health checks** au démarrage du `cpu_worker` (Temporal, Postgres, MinIO, NATS) ; même mécanisme prévu pour `gpu_worker`.
 - [ ] **Mesure empirique du temps GS 30k iter** pour valider ou ajuster le critère "< 6 h pour 1 km" du MVP (cf. `04 §3.3`).
 - [ ] **Mixed precision FP16 activée** dans `train_gs` (cf. [ADR-022](./08-decisions.md#adr-022--stratégie-doptimisation-de-coût-sans-perte-de-qualité), levier #2). Gain attendu : +30 à +50% de vitesse, qualité validée stable.
 - [ ] Production de `specs/reviews/0-end-of-iteration.md` à la fin.

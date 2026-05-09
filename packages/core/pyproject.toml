@@ -5,6 +5,7 @@ description = "Domaine pur — entités, value objects, ports, événements (cf.
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.5",
+    "pydantic-settings>=2.2",
     "numpy>=1.26",
 ]
 
