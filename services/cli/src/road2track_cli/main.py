@@ -78,6 +78,14 @@ def ingest(path: Path = _PATH_ARG, project_id: str | None = _PROJECT_ID_OPT) -> 
         typer.echo(f"  files         : {result.file_count}")
         typer.echo(f"  bytes         : {result.total_bytes}")
         typer.echo(f"  raw uri       : {result.raw_uri_prefix}")
+        typer.echo(f"  video         : {result.video.width}x{result.video.height} @ "
+                   f"{result.video.fps:.1f} fps, {result.video.duration_s:.1f} s, "
+                   f"codec={result.video.codec}")
+        if result.video.had_audio:
+            saved = result.video.bytes_before_audio_drop - result.video.bytes_after_audio_drop
+            typer.echo(f"  audio drop    : {saved} bytes économisés "
+                       f"({result.video.bytes_before_audio_drop} → "
+                       f"{result.video.bytes_after_audio_drop})")
 
     asyncio.run(run())
 

@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# --- Outils système + Python 3.12 ---
+# --- Outils système + Python 3.12 + ffmpeg (probe + drop audio dans ingest_session) ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
         software-properties-common \
         curl \
@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         iproute2 \
         iptables \
+        ffmpeg \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update && apt-get install -y --no-install-recommends \
         python3.12 \

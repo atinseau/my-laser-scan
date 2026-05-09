@@ -1,29 +1,34 @@
 """Activité Temporal : `ingest_session`.
 
 Étape 1 du pipeline (cf. specs/04-pipeline-ml.md §2.1) :
-1. Validation du contenu Record3D + Sensor Logger.
-2. Synchronisation timestamps UTC + fallback cross-corrélation IMU/ARKit (TODO It. 0).
-3. Vérification de cohérence temporelle.
-4. Extraction des métadonnées de base.
-5. Drop du track audio (TODO It. 0).
-6. Upload des fichiers bruts vers MinIO sous `s3://raw/<project_id>/<segment_id>/`.
-7. Insertion d'une entrée Segment en Postgres (TODO It. 0).
-
-Au bootstrap minimal, on fait : validation structure + upload directory.
-Les étapes 2/3/5/7 viennent au fur et à mesure des prochains commits de l'It. 0.
+1. Validation du contenu Record3D + Sensor Logger.                         ✓
+2. Synchronisation timestamps UTC + fallback cross-corrélation IMU/ARKit.   TODO
+3. Vérification de cohérence temporelle.                                    TODO
+4. Extraction des métadonnées (durée, FPS, résolution, codec).              ✓
+5. Drop du track audio (re-mux sans ré-encodage, ~10% de gain).             ✓
+6. Upload des fichiers bruts vers MinIO sous `s3://raw/<project_id>/<segment_id>/` (avec
+   substitution de la vidéo originale par sa version sans audio).            ✓
+7. Insertion d'une entrée Segment en Postgres avec `status=ingested`.        TODO
 """
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import structlog
 from road2track_core.config import Settings
-from road2track_core.entities.refs import IngestInput, SegmentRef
+from road2track_core.entities.refs import IngestInput, SegmentRef, VideoMetadata
 from road2track_core.errors import InvalidSegmentError
 from road2track_core.ids import new_segment_id
 from road2track_storage.object.minio_adapter import MinioObjectStorage
 from temporalio import activity
+
+from road2track_pipeline.activities._video import (
+    drop_audio_track,
+    find_video_file,
+    probe_video,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -47,9 +52,33 @@ def _validate_capture_dir(local_dir: Path) -> None:
         )
 
 
+async def _upload_capture(
+    storage: MinioObjectStorage,
+    local_dir: Path,
+    bucket: str,
+    key_prefix: str,
+    overrides: dict[Path, Path],
+) -> tuple[int, int]:
+    """Upload récursif avec substitution optionnelle de fichiers (ex. vidéo sans audio)."""
+    await storage.ensure_bucket(bucket)
+    prefix = key_prefix.rstrip("/")
+
+    file_count = 0
+    total_bytes = 0
+    for path in local_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        actual = overrides.get(path, path)
+        relative = path.relative_to(local_dir).as_posix()
+        key = f"{prefix}/{relative}"
+        total_bytes += await storage.upload_file(actual, bucket, key)
+        file_count += 1
+    return file_count, total_bytes
+
+
 @activity.defn(name="ingest_session")
 async def ingest_session(payload: IngestInput) -> SegmentRef:
-    """Valide la capture, l'upload sur MinIO, retourne une SegmentRef."""
+    """Valide la capture, probe la vidéo, drop l'audio, upload sur MinIO."""
     settings = Settings()
     local_dir = Path(payload.local_dir).resolve()
     segment_id = payload.segment_id or new_segment_id()
@@ -61,9 +90,26 @@ async def ingest_session(payload: IngestInput) -> SegmentRef:
     )
     logger.info("ingest_session start", local_dir=str(local_dir))
 
+    # 1. Validation
     _validate_capture_dir(local_dir)
     logger.info("capture validated", required_paths=list(REQUIRED_PATHS))
 
+    # 4. Métadonnées vidéo
+    video_path = find_video_file(local_dir)
+    probe = await probe_video(video_path)
+    logger.info(
+        "video probed",
+        duration_s=probe.duration_s,
+        fps=probe.fps,
+        resolution=(probe.width, probe.height),
+        codec=probe.codec,
+        has_audio=probe.has_audio,
+        bytes_size=probe.bytes_size,
+    )
+
+    # 5. Drop audio (si nécessaire)
+    bytes_after = probe.bytes_size
+    overrides: dict[Path, Path] = {}
     storage = MinioObjectStorage(
         endpoint_url=settings.minio_endpoint,
         access_key=settings.minio_access_key,
@@ -71,19 +117,48 @@ async def ingest_session(payload: IngestInput) -> SegmentRef:
     )
     bucket = settings.minio_bucket_raw
     key_prefix = f"{payload.project_id}/{segment_id}"
-    file_count, total_bytes = await storage.upload_directory(
-        local_dir=local_dir,
-        bucket=bucket,
-        key_prefix=key_prefix,
-    )
+
+    with tempfile.TemporaryDirectory(prefix="r2t-ingest-") as tmpdir:
+        if probe.has_audio:
+            stripped = Path(tmpdir) / video_path.name
+            bytes_after = await drop_audio_track(video_path, stripped)
+            overrides[video_path] = stripped
+            logger.info(
+                "audio dropped",
+                bytes_before=probe.bytes_size,
+                bytes_after=bytes_after,
+                saved=probe.bytes_size - bytes_after,
+            )
+        else:
+            logger.info("no audio track to drop")
+
+        # 6. Upload (avec swap vidéo)
+        file_count, total_bytes = await _upload_capture(
+            storage=storage,
+            local_dir=local_dir,
+            bucket=bucket,
+            key_prefix=key_prefix,
+            overrides=overrides,
+        )
 
     raw_uri_prefix = f"s3://{bucket}/{key_prefix}/"
+    video_metadata = VideoMetadata(
+        duration_s=probe.duration_s,
+        fps=probe.fps,
+        width=probe.width,
+        height=probe.height,
+        codec=probe.codec,
+        had_audio=probe.has_audio,
+        bytes_before_audio_drop=probe.bytes_size,
+        bytes_after_audio_drop=bytes_after,
+    )
     ref = SegmentRef(
         project_id=payload.project_id,
         segment_id=segment_id,
         raw_uri_prefix=raw_uri_prefix,
         file_count=file_count,
         total_bytes=total_bytes,
+        video=video_metadata,
     )
     logger.info(
         "ingest_session done",

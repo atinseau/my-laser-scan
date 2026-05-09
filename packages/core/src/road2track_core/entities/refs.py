@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from road2track_core.ids import ProjectId, SegmentId
 
@@ -28,6 +28,25 @@ class IngestInput(BaseModel):
     )
 
 
+class VideoMetadata(BaseModel):
+    """Métadonnées immuables d'un fichier vidéo de capture."""
+
+    model_config = ConfigDict(frozen=True)
+
+    duration_s: float = Field(ge=0.0)
+    fps: float = Field(ge=0.0)
+    width: int = Field(ge=0)
+    height: int = Field(ge=0)
+    codec: str = ""
+    had_audio: bool = Field(
+        default=False,
+        description="Vrai si le fichier d'origine contenait un track audio "
+        "(droppé pendant l'ingestion).",
+    )
+    bytes_before_audio_drop: int = Field(default=0, ge=0)
+    bytes_after_audio_drop: int = Field(default=0, ge=0)
+
+
 class SegmentRef(BaseModel):
     """Référence à un segment ingéré, échangée entre activités."""
 
@@ -37,3 +56,4 @@ class SegmentRef(BaseModel):
     raw_uri_prefix: str = Field(description="Ex. s3://raw/<project_id>/<segment_id>/")
     file_count: int = Field(ge=0)
     total_bytes: int = Field(ge=0)
+    video: VideoMetadata

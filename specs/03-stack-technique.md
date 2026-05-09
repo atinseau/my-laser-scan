@@ -30,6 +30,7 @@
 | Géo math | PyProj, NumPy, SciPy | stables | Standard |
 | Image | OpenCV (`cv2`), Pillow | stables | Standard |
 | Mesh / FBX | Blender | 4.2 LTS | Bake, FBX, scriptable Python |
+| Vidéo / audio | ffmpeg + ffprobe | dernière stable | Probe metadata + drop track audio dans `ingest_session`. **Doit être dans le PATH** sur la machine d'orchestration (Mac : `brew install ffmpeg`) et dans l'image `gpu_worker`. |
 | Track AC build | ksEditor | binaire fourni | Compilation KN5 (Windows) |
 | Tests | pytest + pytest-asyncio | dernières stables | Standard |
 | Tests — mocking | pytest-mock | dernière stable | Mocks idiomatiques (mocker fixture) |

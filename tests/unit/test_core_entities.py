@@ -14,6 +14,7 @@ from road2track_core.entities import (
     SegmentRef,
     SegmentSource,
     TrackKind,
+    VideoMetadata,
 )
 from road2track_core.ids import new_project_id, new_segment_id
 from road2track_core.value_objects.gps import GPSCoord
@@ -82,6 +83,19 @@ def test_ingest_input_optional_segment_id() -> None:
     assert payload.segment_id is None
 
 
+def _sample_video() -> VideoMetadata:
+    return VideoMetadata(
+        duration_s=10.0,
+        fps=60.0,
+        width=1920,
+        height=1080,
+        codec="hevc",
+        had_audio=False,
+        bytes_before_audio_drop=1024,
+        bytes_after_audio_drop=1024,
+    )
+
+
 def test_segment_ref_validation() -> None:
     ref = SegmentRef(
         project_id=new_project_id(),
@@ -89,8 +103,10 @@ def test_segment_ref_validation() -> None:
         raw_uri_prefix="s3://raw/x/y/",
         file_count=10,
         total_bytes=1024,
+        video=_sample_video(),
     )
     assert ref.file_count == 10
+    assert ref.video.fps == 60.0
 
 
 def test_segment_ref_negative_count_rejected() -> None:
@@ -101,7 +117,19 @@ def test_segment_ref_negative_count_rejected() -> None:
             raw_uri_prefix="s3://raw/x/y/",
             file_count=-1,
             total_bytes=0,
+            video=_sample_video(),
         )
+
+
+def test_video_metadata_frozen() -> None:
+    v = _sample_video()
+    with pytest.raises(ValidationError):
+        v.fps = 30.0  # type: ignore[misc]
+
+
+def test_video_metadata_negative_duration_rejected() -> None:
+    with pytest.raises(ValidationError):
+        VideoMetadata(duration_s=-1.0, fps=0.0, width=0, height=0)
 
 
 def test_gps_coord_frozen() -> None:
