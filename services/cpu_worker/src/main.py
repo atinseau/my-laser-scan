@@ -9,8 +9,9 @@ Cf. specs/02-architecture.md §6 et specs/04-pipeline-ml.md.
 4. Ouvre une connexion Temporal.
 5. Démarre la boucle de polling sur la task queue 'cpu'.
 
-Activités enregistrées : aucune au bootstrap. Elles arriveront avec les implémentations
-des étapes du pipeline (ingest, fuse_sensors, detect_kind_and_trim, ...).
+Activités enregistrées : `ingest_session`. D'autres viendront au fur et à mesure
+de l'It. 0 et It. 1 (fuse_sensors, detect_kind_and_trim, tile, etc.).
+Workflows : `ProcessProject`.
 """
 
 from __future__ import annotations
@@ -22,8 +23,10 @@ import sys
 import structlog
 from road2track_core.config import Settings
 from road2track_core.queues import TaskQueue
+from road2track_pipeline.activities import ingest_session
 from road2track_pipeline.health import all_ok, run_health_checks
 from road2track_pipeline.logging_setup import configure_logging
+from road2track_pipeline.workflows import ProcessProject
 from temporalio.client import Client
 from temporalio.worker import Worker
 
@@ -59,15 +62,18 @@ async def main_async() -> None:
     )
     logger.info("temporal connected", namespace=settings.temporal_namespace)
 
-    # Worker — pas d'activités enregistrées au bootstrap, c'est attendu.
     worker = Worker(
         client,
         task_queue=TaskQueue.CPU.value,
-        workflows=[],
-        activities=[],
+        workflows=[ProcessProject],
+        activities=[ingest_session],
     )
 
-    logger.info("cpu_worker registered, polling task queue")
+    logger.info(
+        "cpu_worker registered, polling task queue",
+        workflows=["ProcessProject"],
+        activities=["ingest_session"],
+    )
     await worker.run()
 
 

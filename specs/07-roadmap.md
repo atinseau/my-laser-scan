@@ -58,8 +58,8 @@ Exclu (pour les itérations suivantes) :
 - [x] Repo initialisé avec workspace `uv` complet.
 - [ ] `make up` démarre l'infra sur le Mac.
 - [ ] `docker compose -f docker-compose.gpu.yml up` démarre le `gpu_worker` sur le PC, qui se connecte au Temporal Mac via Tailscale.
-- [ ] `uv run road2track ingest ./captures/balade_test` enregistre un projet et un segment.
-- [ ] `uv run road2track process <project-id>` lance le workflow et produit un mesh + textures.
+- [x] `uv run road2track ingest ./captures/balade_test` enregistre un projet et un segment via le workflow `ProcessProject` (ingestion via activité `ingest_session` qui upload sur MinIO).
+- [ ] `uv run road2track process <project-id>` lance le workflow complet et produit un mesh + textures.
 - [ ] Le résultat est ouvert dans Blender et **visuellement validé** par l'utilisateur.
 - [ ] **Validation technique du pattern session activities** Temporal (cf. [ADR-019](./08-decisions.md#adr-019--session-activities-pour-chaîner-le-pipeline-gpu-dune-tuile)). Si KO, fallback documenté dans un ADR de remplacement.
 - [ ] **Cross-corrélation IMU/ARKit** opérationnelle comme fallback de la sync UTC (cf. [ADR-017](./08-decisions.md#adr-017--synchronisation-record3d--sensor-logger-via-timestamps-utc)).

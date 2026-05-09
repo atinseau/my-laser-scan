@@ -19,7 +19,11 @@ select = [
     "ARG",            # unused args
     "PTH",            # pathlib
 ]
-ignore = []
+ignore = [
+    # Le projet vise 3.11+ (cf. specs/03-stack-technique.md). Le `type X = Y` (PEP 695)
+    # n'est dispo qu'à partir de 3.12, donc on garde TypeAlias pour la compat.
+    "UP040",
+]
 
 [lint.per-file-ignores]
 "tests/**" = ["ANN", "ARG"]
