@@ -8,21 +8,32 @@
 5. Drop du track audio (re-mux sans ré-encodage, ~10% de gain).             ✓
 6. Upload des fichiers bruts vers MinIO sous `s3://raw/<project_id>/<segment_id>/` (avec
    substitution de la vidéo originale par sa version sans audio).            ✓
-7. Insertion d'une entrée Segment en Postgres avec `status=ingested`.        TODO
+7. Persistance Postgres : auto-create du Project si nouveau, puis insert Segment. ✓
 """
 
 from __future__ import annotations
 
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
 from road2track_core.config import Settings
+from road2track_core.entities.project import Project, ProjectStatus
 from road2track_core.entities.refs import IngestInput, SegmentRef, VideoMetadata
+from road2track_core.entities.segment import Segment, SegmentSource
 from road2track_core.errors import InvalidSegmentError
 from road2track_core.ids import new_segment_id
 from road2track_geo.fusion.sync import compute_sync
 from road2track_storage.object.minio_adapter import MinioObjectStorage
+from road2track_storage.relational.session import (
+    create_async_engine_from_settings,
+    create_session_factory,
+)
+from road2track_storage.repositories import (
+    PostgresProjectRepository,
+    PostgresSegmentRepository,
+)
 from temporalio import activity
 
 from road2track_pipeline.activities._capture_parsers import (
@@ -174,6 +185,53 @@ async def ingest_session(payload: IngestInput) -> SegmentRef:
         bytes_before_audio_drop=probe.bytes_size,
         bytes_after_audio_drop=bytes_after,
     )
+
+    # 7. Persistance Postgres : auto-create Project si premier segment, puis insert Segment.
+    engine = create_async_engine_from_settings(settings)
+    session_factory = create_session_factory(engine)
+    raw_paths_dict = {
+        "raw_uri_prefix": raw_uri_prefix,
+        "video_codec": probe.codec,
+    }
+    try:
+        async with session_factory() as session, session.begin():
+            project_repo = PostgresProjectRepository(session)
+            existing = await project_repo.get(payload.project_id)
+            now = datetime.now(tz=UTC)
+            if existing is None:
+                await project_repo.create(
+                    Project(
+                        id=payload.project_id,
+                        name=f"Auto — {payload.project_id[:8]}",
+                        created_at=now,
+                        updated_at=now,
+                        status=ProjectStatus.CAPTURING,
+                    )
+                )
+                logger.info("project auto-created", project_id=payload.project_id)
+            else:
+                await project_repo.update_status(
+                    payload.project_id, ProjectStatus.CAPTURING
+                )
+
+            segment_repo = PostgresSegmentRepository(session)
+            await segment_repo.create(
+                Segment(
+                    id=segment_id,
+                    project_id=payload.project_id,
+                    source=SegmentSource.RECORD_3D_PLUS_SENSOR_LOGGER,
+                    captured_at=now,
+                    duration_s=probe.duration_s,
+                    raw_paths=raw_paths_dict,
+                    fps=probe.fps,
+                    resolution=(probe.width, probe.height),
+                    has_lidar=True,
+                )
+            )
+            logger.info("segment persisted", segment_id=segment_id)
+    finally:
+        await engine.dispose()
+
     ref = SegmentRef(
         project_id=payload.project_id,
         segment_id=segment_id,

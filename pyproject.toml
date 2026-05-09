@@ -29,6 +29,7 @@ dev = [
     "pyright>=1.1.350",
     "pre-commit>=3.6",
     "testcontainers>=4.0",
+    "aiosqlite>=0.20",
 ]
 
 [tool.pytest.ini_options]

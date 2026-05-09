@@ -5,5 +5,6 @@ Cf. specs/02-architecture.md §5.1.
 """
 
 from road2track_core.ports.object_storage_port import ObjectStoragePort
+from road2track_core.ports.repository_port import ProjectRepository, SegmentRepository
 
-__all__ = ["ObjectStoragePort"]
+__all__ = ["ObjectStoragePort", "ProjectRepository", "SegmentRepository"]
