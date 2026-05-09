@@ -2,8 +2,8 @@
 
 Étape 1 du pipeline (cf. specs/04-pipeline-ml.md §2.1) :
 1. Validation du contenu Record3D + Sensor Logger.                         ✓
-2. Synchronisation timestamps UTC + fallback cross-corrélation IMU/ARKit.   TODO
-3. Vérification de cohérence temporelle.                                    TODO
+2. Synchronisation timestamps UTC + fallback cross-corrélation IMU/ARKit.   ✓ (ADR-017)
+3. Vérification de cohérence temporelle.                                    ✓
 4. Extraction des métadonnées (durée, FPS, résolution, codec).              ✓
 5. Drop du track audio (re-mux sans ré-encodage, ~10% de gain).             ✓
 6. Upload des fichiers bruts vers MinIO sous `s3://raw/<project_id>/<segment_id>/` (avec
@@ -21,9 +21,15 @@ from road2track_core.config import Settings
 from road2track_core.entities.refs import IngestInput, SegmentRef, VideoMetadata
 from road2track_core.errors import InvalidSegmentError
 from road2track_core.ids import new_segment_id
+from road2track_geo.fusion.sync import compute_sync
 from road2track_storage.object.minio_adapter import MinioObjectStorage
 from temporalio import activity
 
+from road2track_pipeline.activities._capture_parsers import (
+    find_imu_file,
+    parse_record3d_poses,
+    parse_sensor_logger_imu,
+)
 from road2track_pipeline.activities._video import (
     drop_audio_track,
     find_video_file,
@@ -94,6 +100,22 @@ async def ingest_session(payload: IngestInput) -> SegmentRef:
     _validate_capture_dir(local_dir)
     logger.info("capture validated", required_paths=list(REQUIRED_PATHS))
 
+    # 2 + 3. Synchronisation Record3D ARKit ↔ Sensor Logger IMU (cf. ADR-017).
+    poses_path = local_dir / "record3d" / "poses.json"
+    imu_path = find_imu_file(local_dir)
+    arkit_t, arkit_pos = parse_record3d_poses(poses_path)
+    imu_t, imu_acc = parse_sensor_logger_imu(imu_path)
+    sync = compute_sync(arkit_t, arkit_pos, imu_t, imu_acc)
+    logger.info(
+        "sync computed",
+        method=sync.method,
+        drift_ms=sync.drift_ms,
+        offset_applied_ms=sync.offset_applied_ms,
+        correlation_max=sync.correlation_max,
+    )
+    if sync.warning:
+        logger.warning("sync warning", warning=sync.warning)
+
     # 4. Métadonnées vidéo
     video_path = find_video_file(local_dir)
     probe = await probe_video(video_path)
@@ -159,6 +181,7 @@ async def ingest_session(payload: IngestInput) -> SegmentRef:
         file_count=file_count,
         total_bytes=total_bytes,
         video=video_metadata,
+        sync=sync,
     )
     logger.info(
         "ingest_session done",

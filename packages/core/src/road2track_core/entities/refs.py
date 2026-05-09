@@ -47,6 +47,30 @@ class VideoMetadata(BaseModel):
     bytes_after_audio_drop: int = Field(default=0, ge=0)
 
 
+SyncMethod = Literal["utc_aligned", "cross_correlation", "fallback_zero"]
+
+
+class SyncResult(BaseModel):
+    """Résultat de la synchronisation Record3D ↔ Sensor Logger.
+
+    Cf. specs/04-pipeline-ml.md §2.1 (étape 2) et ADR-017.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    drift_ms: float = Field(
+        description="Drift brut entre les premiers timestamps des deux flux."
+    )
+    offset_applied_ms: float = Field(
+        default=0.0,
+        description="Offset à appliquer au flux IMU pour l'aligner sur ARKit. "
+        "0 si UTC aligné ou fallback.",
+    )
+    method: SyncMethod
+    correlation_max: float = Field(default=0.0, ge=-1.0, le=1.0)
+    warning: str | None = None
+
+
 class SegmentRef(BaseModel):
     """Référence à un segment ingéré, échangée entre activités."""
 
@@ -57,3 +81,4 @@ class SegmentRef(BaseModel):
     file_count: int = Field(ge=0)
     total_bytes: int = Field(ge=0)
     video: VideoMetadata
+    sync: SyncResult

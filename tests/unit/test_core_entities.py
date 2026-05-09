@@ -13,6 +13,7 @@ from road2track_core.entities import (
     Segment,
     SegmentRef,
     SegmentSource,
+    SyncResult,
     TrackKind,
     VideoMetadata,
 )
@@ -96,6 +97,10 @@ def _sample_video() -> VideoMetadata:
     )
 
 
+def _sample_sync() -> SyncResult:
+    return SyncResult(drift_ms=12.0, offset_applied_ms=0.0, method="utc_aligned")
+
+
 def test_segment_ref_validation() -> None:
     ref = SegmentRef(
         project_id=new_project_id(),
@@ -104,9 +109,11 @@ def test_segment_ref_validation() -> None:
         file_count=10,
         total_bytes=1024,
         video=_sample_video(),
+        sync=_sample_sync(),
     )
     assert ref.file_count == 10
     assert ref.video.fps == 60.0
+    assert ref.sync.method == "utc_aligned"
 
 
 def test_segment_ref_negative_count_rejected() -> None:
@@ -118,7 +125,19 @@ def test_segment_ref_negative_count_rejected() -> None:
             file_count=-1,
             total_bytes=0,
             video=_sample_video(),
+            sync=_sample_sync(),
         )
+
+
+def test_sync_result_method_literal() -> None:
+    assert SyncResult(drift_ms=0.0, method="utc_aligned").method == "utc_aligned"
+    with pytest.raises(ValidationError):
+        SyncResult(drift_ms=0.0, method="invented")  # type: ignore[arg-type]
+
+
+def test_sync_result_correlation_bounds() -> None:
+    with pytest.raises(ValidationError):
+        SyncResult(drift_ms=0.0, method="cross_correlation", correlation_max=1.5)
 
 
 def test_video_metadata_frozen() -> None:
