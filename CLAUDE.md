@@ -186,11 +186,51 @@ Pour les modifications mineures (typo, refactor local, ajout d'un test), pas bes
   - ❌ `WIP`
 - Un commit = une intention. Pas de mégacommits.
 
-## 11. Reviews prévues
+## 11. Mise à jour de la documentation au fil des itérations
 
-Le projet prévoit des reviews :
-- **Fin de chaque itération** : Claude (ou un humain) audite ce qui a été produit, écrit un document `specs/reviews/N-fin-iteration.md`, met en évidence les écarts entre code et specs, signale les failles de qualité ou de sécurité.
-- **Review finale** : audit complet à la fin de l'It. 4.
+Le projet a un état vivant qui doit refléter le code réel. Toute dérive entre code et documentation est un bug à corriger en priorité.
+
+### 11.1 À la fin d'une tâche (livrable de la roadmap)
+
+Quand un livrable listé dans [`specs/07-roadmap.md`](./specs/07-roadmap.md) est terminé :
+
+1. **Cocher** la case `[ ]` → `[x]` dans `specs/07-roadmap.md`.
+2. Si le livrable a livré un comportement utilisateur visible : **mettre à jour le tableau "Statut des fonctionnalités"** du `README.md` (statut 🟡 → ✅).
+3. Si le livrable a fermé une question ouverte : **fermer la QO** dans `specs/09-questions-ouvertes.md` (cf. §Procédure dans ce document) et créer un ADR si nécessaire dans `specs/08-decisions.md`.
+4. **Commit** avec un message lié à la tâche en français.
+
+### 11.2 À la fin d'une itération
+
+Quand tous les livrables d'une itération sont cochés :
+
+1. Vérifier les **critères go/no-go** de l'itération dans `specs/07-roadmap.md`. Si NO-GO : ne pas passer à la suivante.
+2. **Mettre à jour le badge "Statut du projet"** du `README.md` (ex. `🚧 Pré-POC` → `🟢 It. 0 terminée`, puis `🚧 It. 1 en cours`).
+3. **Mettre à jour le statut** dans :
+   - `README.md` (badge en haut + section "Statut du projet")
+   - `CLAUDE.md §1` (Contexte en deux lignes)
+   - `specs/README.md` (section "Statut du projet")
+4. **Produire** le document `specs/reviews/N-end-of-iteration.md` (méthodologie : cf. [`specs/00-vision.md#méthodologie`](./specs/00-vision.md#méthodologie)). Le document inclut :
+   - Récap des livrables réalisés.
+   - Écarts entre la spec et le code livré.
+   - Mesures empiriques (temps, coûts, qualité).
+   - Failles ou risques identifiés.
+   - Mises à jour proposées de la spec (si écarts).
+5. **Mettre à jour le compteur santé** des QOs en haut de `specs/09-questions-ouvertes.md`.
+6. Si des décisions structurantes ont été prises : **nouveaux ADRs** dans `specs/08-decisions.md` avec la colonne "Origine = It. N".
+
+### 11.3 Quand l'architecture ou le périmètre change
+
+1. **Spec d'abord, code ensuite.** Mettre à jour `specs/02-architecture.md` (architecture), `specs/01-cahier-des-charges.md` (périmètre), ou `specs/04-pipeline-ml.md` (ML) **avant** de coder.
+2. Si la modification est structurante (ne pourrait pas être facilement annulée) : **nouvel ADR** dans `specs/08-decisions.md`.
+3. Si la modification ajoute ou retire une **règle d'or** : mettre à jour la liste §2 ci-dessus.
+4. Si la modification touche le glossaire ou les conventions : mettre à jour `specs/01-cahier-des-charges.md §9` et CLAUDE.md §3.
+
+### 11.4 Reviews prévues
+
+Le projet prévoit des reviews systématiques :
+
+- **Fin de chaque itération** : Claude (ou un humain) audite ce qui a été produit, écrit `specs/reviews/N-end-of-iteration.md`, met en évidence les écarts entre code et specs, signale les failles de qualité ou de sécurité.
+- **Review finale** : audit complet à la fin de l'It. 4. Document `specs/reviews/final-review.md`.
 
 Les reviews **lient** systématiquement leurs constats aux exigences de [`specs/01-cahier-des-charges.md`](./specs/01-cahier-des-charges.md) et aux ADRs.
 
