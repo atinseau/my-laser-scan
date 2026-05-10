@@ -1,0 +1,22 @@
+[project]
+name = "road2track-storage"
+version = "0.1.0"
+description = "Adapters stockage — MinIO (S3), Postgres (SQLAlchemy 2 + Alembic), repositories (cf. specs/02-architecture.md §4.4)"
+requires-python = ">=3.11"
+dependencies = [
+    "road2track-core",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "aioboto3>=12.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/road2track_storage"]
+
+[tool.uv.sources]
+road2track-core = { workspace = true }

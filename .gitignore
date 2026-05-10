@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.pyright/
+.ruff_cache/
+
+# Builds
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Secrets & configs locaux
+.env
+.env.local
+*.secrets
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Project artefacts (volumineux ou sensibles)
+captures/
+output/
+intermediates/
+data/
+*.kn5
+*.fbx
+*.ply
+*.r3d
+*.usdz
+
+# Docker
+.docker/
+
+# uv
+uv.lock.bak
+
+# Logs
+*.log
+logs/

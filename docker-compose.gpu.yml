@@ -1,0 +1,37 @@
+# Override à lancer SUR LE PC Windows pour le worker GPU CUDA.
+# Le PC doit avoir Docker Desktop + NVIDIA Container Toolkit.
+# Usage : docker compose -f docker-compose.gpu.yml up -d
+# Voir specs/05-infrastructure.md §5.
+
+services:
+  gpu-worker:
+    build:
+      context: .
+      dockerfile: services/gpu_worker/Dockerfile
+    image: road2track/gpu-worker:0.1.0
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      TEMPORAL_HOST: ${TEMPORAL_HOST}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TASK_QUEUE: gpu
+      LOG_LEVEL: INFO
+    volumes:
+      - gpu-worker-cache:/cache   # cache modèles ML, cf. ADR-020
+    cap_add:
+      - NET_ADMIN                  # requis pour Tailscale
+    devices:
+      - /dev/net/tun
+    restart: unless-stopped
+
+volumes:
+  gpu-worker-cache:

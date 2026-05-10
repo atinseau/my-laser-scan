@@ -1,0 +1,105 @@
+# Infrastructure locale Road2Track — à lancer sur la machine d'orchestration (Mac).
+# Voir specs/05-infrastructure.md §4.
+# Tous les services bind sur 127.0.0.1 ; exposition via Tailscale serve.
+
+services:
+
+  # --- Temporal et sa DB dédiée ---
+  temporal-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - temporal-postgres-data:/var/lib/postgresql/data
+    networks:
+      - road2track
+
+  temporal:
+    image: temporalio/auto-setup:1.22
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: temporal-postgres
+    depends_on:
+      - temporal-postgres
+    ports:
+      - "127.0.0.1:7233:7233"
+    networks:
+      - road2track
+
+  temporal-ui:
+    image: temporalio/ui:2.20.0
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    depends_on:
+      - temporal
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - road2track
+
+  # --- Postgres applicatif ---
+  app-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-road2track}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-road2track}
+    volumes:
+      - app-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - road2track
+
+  # --- MinIO (stockage objet S3-compatible) ---
+  minio:
+    image: minio/minio:RELEASE.2024-01-01T16-36-33Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-changeme}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-changeme_with_random_value}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "127.0.0.1:9000:9000"   # API S3
+      - "127.0.0.1:9001:9001"   # Console web
+    networks:
+      - road2track
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-01-01T16-25-26Z
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY:-changeme} ${MINIO_SECRET_KEY:-changeme_with_random_value};
+      mc mb -p local/raw local/intermediates local/outputs;
+      exit 0;
+      "
+    networks:
+      - road2track
+
+  # --- NATS (events temps réel pour la future Web UI) ---
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-m", "8222"]
+    ports:
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
+    networks:
+      - road2track
+
+volumes:
+  temporal-postgres-data:
+  app-postgres-data:
+  minio-data:
+
+networks:
+  road2track:
+    driver: bridge
