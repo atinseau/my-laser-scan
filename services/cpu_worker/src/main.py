@@ -23,7 +23,7 @@ import sys
 import structlog
 from road2track_core.config import Settings
 from road2track_core.queues import TaskQueue
-from road2track_pipeline.activities import ingest_session
+from road2track_pipeline.activities import fuse_sensors, ingest_session
 from road2track_pipeline.health import all_ok, run_health_checks
 from road2track_pipeline.logging_setup import configure_logging
 from road2track_pipeline.workflows import ProcessProject
@@ -66,13 +66,13 @@ async def main_async() -> None:
         client,
         task_queue=TaskQueue.CPU.value,
         workflows=[ProcessProject],
-        activities=[ingest_session],
+        activities=[ingest_session, fuse_sensors],
     )
 
     logger.info(
         "cpu_worker registered, polling task queue",
         workflows=["ProcessProject"],
-        activities=["ingest_session"],
+        activities=["ingest_session", "fuse_sensors"],
     )
     await worker.run()
 

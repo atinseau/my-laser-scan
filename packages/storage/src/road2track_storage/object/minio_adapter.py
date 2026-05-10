@@ -68,6 +68,53 @@ class MinioObjectStorage:
         logger.debug("uploaded", bucket=bucket, key=key, bytes=size)
         return size
 
+    async def upload_bytes(self, data: bytes, bucket: str, key: str) -> int:
+        """Upload direct depuis la mémoire (utile pour trajectory.json, manifests, ...)."""
+        async with self._client() as s3:
+            await s3.put_object(Bucket=bucket, Key=key, Body=data)
+        size = len(data)
+        logger.debug("uploaded bytes", bucket=bucket, key=key, bytes=size)
+        return size
+
+    async def download_file(self, bucket: str, key: str, local_path: Path) -> int:
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        async with self._client() as s3:
+            await s3.download_file(bucket, key, str(local_path))
+        size = local_path.stat().st_size
+        logger.debug("downloaded", bucket=bucket, key=key, bytes=size)
+        return size
+
+    async def download_directory(
+        self, bucket: str, key_prefix: str, local_dir: Path
+    ) -> tuple[int, int]:
+        """Télécharge récursivement tous les objets sous `key_prefix` vers `local_dir`."""
+        local_dir.mkdir(parents=True, exist_ok=True)
+        prefix = key_prefix.rstrip("/") + "/"
+
+        file_count = 0
+        total_bytes = 0
+        async with self._client() as s3:
+            paginator = s3.get_paginator("list_objects_v2")
+            async for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+                for obj in page.get("Contents", []) or []:
+                    key = obj["Key"]
+                    relative = key[len(prefix):]
+                    if not relative:
+                        continue
+                    target = local_dir / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    await s3.download_file(bucket, key, str(target))
+                    file_count += 1
+                    total_bytes += int(obj.get("Size", 0))
+        logger.info(
+            "downloaded directory",
+            bucket=bucket,
+            prefix=prefix,
+            file_count=file_count,
+            total_bytes=total_bytes,
+        )
+        return file_count, total_bytes
+
     async def upload_directory(
         self, local_dir: Path, bucket: str, key_prefix: str
     ) -> tuple[int, int]:

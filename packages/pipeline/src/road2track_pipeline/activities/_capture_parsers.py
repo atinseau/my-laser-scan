@@ -129,3 +129,63 @@ def find_imu_file(local_dir: Path) -> Path:
     raise InvalidSegmentError(
         f"aucun fichier IMU (imu.json ou accelerometer.json) dans {sensor_dir}"
     )
+
+
+def parse_sensor_logger_gps(
+    path: Path,
+) -> tuple[
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+]:
+    """Parse `sensor_logger/gps.json`.
+
+    Format attendu (tolérant) :
+        [
+          {
+            "time": 1700000000.123,
+            "latitude": 45.064,
+            "longitude": 6.408,
+            "altitude": 2645.0,
+            "horizontalAccuracy": 5.0
+          },
+          ...
+        ]
+
+    Champs alternatifs supportés : `lat`/`lon`/`alt`, `hdop` au lieu de
+    `horizontalAccuracy`. Retourne (times_s, lats, lons, alts, hdops).
+    """
+    if not path.is_file():
+        raise InvalidSegmentError(f"gps.json introuvable: {path}")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    samples = data if isinstance(data, list) else data.get("samples", [])
+    if not samples:
+        raise InvalidSegmentError(f"flux GPS vide: {path}")
+
+    times: list[float] = []
+    lats: list[float] = []
+    lons: list[float] = []
+    alts: list[float] = []
+    hdops: list[float] = []
+    for s in samples:
+        if not isinstance(s, dict):
+            continue
+        ts_raw = s.get("time", s.get("timestamp", s.get("t")))
+        if ts_raw is None:
+            raise InvalidSegmentError(f"échantillon GPS sans timestamp dans {path}")
+        times.append(_as_float(ts_raw))
+        lats.append(_as_float(s.get("latitude", s.get("lat", 0.0))))
+        lons.append(_as_float(s.get("longitude", s.get("lon", 0.0))))
+        alts.append(_as_float(s.get("altitude", s.get("alt", 0.0))))
+        hdop_raw = s.get("horizontalAccuracy", s.get("hdop", 9999.0))
+        hdops.append(_as_float(hdop_raw))
+
+    return (
+        np.asarray(times, dtype=np.float64),
+        np.asarray(lats, dtype=np.float64),
+        np.asarray(lons, dtype=np.float64),
+        np.asarray(alts, dtype=np.float64),
+        np.asarray(hdops, dtype=np.float64),
+    )

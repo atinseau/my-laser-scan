@@ -6,7 +6,7 @@ Cf. specs/02-architecture.md §4.7.
 from __future__ import annotations
 
 from road2track_core.config import Settings
-from road2track_core.entities.refs import IngestInput, SegmentRef
+from road2track_core.entities.refs import IngestInput
 from road2track_core.queues import TaskQueue
 from temporalio.client import Client, WorkflowHandle
 
@@ -24,8 +24,11 @@ async def start_process_project(
     workflow_id: str,
     *,
     client: Client | None = None,
-) -> WorkflowHandle[object, SegmentRef]:
-    """Démarre un workflow `ProcessProject`. Retourne un handle pour suivre l'exécution."""
+) -> WorkflowHandle[object, object]:
+    """Démarre un workflow `ProcessProject`. Retourne un handle pour suivre l'exécution.
+
+    Le workflow retourne un `ProcessProjectResult` (cf. `workflows/process_project.py`).
+    """
     if client is None:
         client = await get_temporal_client()
     return await client.start_workflow(

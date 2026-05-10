@@ -82,3 +82,26 @@ class SegmentRef(BaseModel):
     total_bytes: int = Field(ge=0)
     video: VideoMetadata
     sync: SyncResult
+
+
+class TrajectoryRef(BaseModel):
+    """Référence à une trajectoire fusionnée (output de `fuse_sensors`).
+
+    Cf. specs/04-pipeline-ml.md §2.2 et specs/06-modele-donnees.md §4.4.
+    Au POC, le fichier est en JSON (Parquet en V1). Stocké sous
+    `s3://intermediates/<project_id>/<segment_id>/trajectory.json`.
+    """
+
+    schema_version: Literal[1] = 1
+    project_id: ProjectId
+    segment_id: SegmentId
+    trajectory_uri: str
+    n_samples: int = Field(ge=0)
+    duration_s: float = Field(ge=0.0)
+    arc_length_m: float = Field(default=0.0, ge=0.0)
+    origin_lat: float
+    origin_lon: float
+    origin_alt: float
+    origin_t: float = Field(description="Timestamp UTC du fix GPS d'origine")
+    alignment_rmse_m: float = Field(default=0.0, ge=0.0)
+    n_gps_fixes_used: int = Field(default=0, ge=0)

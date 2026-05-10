@@ -9,6 +9,7 @@ from road2track_core.entities.refs import (
     SegmentRef,
     SyncMethod,
     SyncResult,
+    TrajectoryRef,
     VideoMetadata,
 )
 from road2track_core.entities.segment import Segment, SegmentSource
@@ -24,5 +25,6 @@ __all__ = [
     "SyncMethod",
     "SyncResult",
     "TrackKind",
+    "TrajectoryRef",
     "VideoMetadata",
 ]

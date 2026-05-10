@@ -72,20 +72,37 @@ def ingest(path: Path = _PATH_ARG, project_id: str | None = _PROJECT_ID_OPT) -> 
         handle = await start_process_project(payload, workflow_id=workflow_id)
         typer.echo(f"workflow démarré : {handle.id} (run_id: {handle.result_run_id})")
         result = await handle.result()
-        typer.echo("✅ ingestion terminée")
-        typer.echo(f"  project_id    : {result.project_id}")
-        typer.echo(f"  segment_id    : {result.segment_id}")
-        typer.echo(f"  files         : {result.file_count}")
-        typer.echo(f"  bytes         : {result.total_bytes}")
-        typer.echo(f"  raw uri       : {result.raw_uri_prefix}")
-        typer.echo(f"  video         : {result.video.width}x{result.video.height} @ "
-                   f"{result.video.fps:.1f} fps, {result.video.duration_s:.1f} s, "
-                   f"codec={result.video.codec}")
-        if result.video.had_audio:
-            saved = result.video.bytes_before_audio_drop - result.video.bytes_after_audio_drop
-            typer.echo(f"  audio drop    : {saved} bytes économisés "
-                       f"({result.video.bytes_before_audio_drop} → "
-                       f"{result.video.bytes_after_audio_drop})")
+        seg = result.segment
+        traj = result.trajectory
+        typer.echo("✅ traitement terminé")
+        typer.echo(f"  project_id    : {seg.project_id}")
+        typer.echo(f"  segment_id    : {seg.segment_id}")
+        typer.echo(f"  files         : {seg.file_count}")
+        typer.echo(f"  bytes         : {seg.total_bytes}")
+        typer.echo(f"  raw uri       : {seg.raw_uri_prefix}")
+        typer.echo(
+            f"  video         : {seg.video.width}x{seg.video.height} @ "
+            f"{seg.video.fps:.1f} fps, {seg.video.duration_s:.1f} s, codec={seg.video.codec}"
+        )
+        if seg.video.had_audio:
+            saved = seg.video.bytes_before_audio_drop - seg.video.bytes_after_audio_drop
+            typer.echo(
+                f"  audio drop    : {saved} bytes économisés "
+                f"({seg.video.bytes_before_audio_drop} → {seg.video.bytes_after_audio_drop})"
+            )
+        typer.echo(
+            f"  sync          : {seg.sync.method} (drift={seg.sync.drift_ms:.0f} ms, "
+            f"offset={seg.sync.offset_applied_ms:.0f} ms)"
+        )
+        typer.echo(
+            f"  trajectoire   : {traj.n_samples} poses, {traj.duration_s:.1f} s, "
+            f"{traj.arc_length_m:.0f} m, RMSE alignement {traj.alignment_rmse_m:.2f} m"
+        )
+        typer.echo(
+            f"  origine       : ({traj.origin_lat:.6f}, {traj.origin_lon:.6f}, "
+            f"alt {traj.origin_alt:.1f} m)"
+        )
+        typer.echo(f"  trajectory uri: {traj.trajectory_uri}")
 
     asyncio.run(run())
 

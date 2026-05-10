@@ -24,5 +24,19 @@ class ObjectStoragePort(Protocol):
     async def upload_file(self, local_path: Path, bucket: str, key: str) -> int:
         """Upload d'un fichier. Retourne la taille uploadée en bytes."""
 
+    async def upload_bytes(self, data: bytes, bucket: str, key: str) -> int:
+        """Upload depuis la mémoire. Retourne la taille uploadée."""
+
+    async def download_file(self, bucket: str, key: str, local_path: Path) -> int:
+        """Télécharge un objet vers un fichier local. Retourne la taille."""
+
+    async def download_directory(
+        self, bucket: str, key_prefix: str, local_dir: Path
+    ) -> tuple[int, int]:
+        """Télécharge récursivement les objets sous `key_prefix`.
+
+        Retourne (file_count, total_bytes).
+        """
+
     async def ensure_bucket(self, bucket: str) -> None:
         """Crée le bucket s'il n'existe pas (idempotent)."""

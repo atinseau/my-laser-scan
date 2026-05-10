@@ -11,12 +11,26 @@ from road2track_geo.fusion.sync import (
     compute_sync,
     cross_correlation_offset_ms,
 )
+from road2track_geo.fusion.trajectory import (
+    DEFAULT_HDOP_THRESHOLD_M,
+    MIN_GPS_FIXES_FOR_ALIGNMENT,
+    FusedTrajectory,
+    find_origin_gps,
+    fuse_trajectory,
+    kabsch_align,
+)
 
 __all__ = [
     "CORRELATION_THRESHOLD",
+    "DEFAULT_HDOP_THRESHOLD_M",
     "MAX_OFFSET_S",
+    "MIN_GPS_FIXES_FOR_ALIGNMENT",
     "RESAMPLE_HZ",
     "UTC_DRIFT_THRESHOLD_MS",
+    "FusedTrajectory",
     "compute_sync",
     "cross_correlation_offset_ms",
+    "find_origin_gps",
+    "fuse_trajectory",
+    "kabsch_align",
 ]

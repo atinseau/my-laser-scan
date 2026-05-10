@@ -11,6 +11,7 @@ from road2track_core.errors import InvalidSegmentError
 from road2track_pipeline.activities._capture_parsers import (
     find_imu_file,
     parse_record3d_poses,
+    parse_sensor_logger_gps,
     parse_sensor_logger_imu,
 )
 
@@ -113,3 +114,38 @@ def test_find_imu_file_missing(tmp_path: Path) -> None:
     (tmp_path / "sensor_logger").mkdir()
     with pytest.raises(InvalidSegmentError, match="aucun fichier IMU"):
         find_imu_file(tmp_path)
+
+
+def test_parse_sensor_logger_gps_supports_full_fields(tmp_path: Path) -> None:
+    samples = [
+        {
+            "time": 1700000000.0,
+            "latitude": 45.064,
+            "longitude": 6.408,
+            "altitude": 2645.0,
+            "horizontalAccuracy": 4.5,
+        },
+        {
+            "time": 1700000000.5,
+            "lat": 45.065,
+            "lon": 6.409,
+            "alt": 2646.0,
+            "hdop": 99.0,
+        },
+    ]
+    path = tmp_path / "gps.json"
+    path.write_text(json.dumps(samples), encoding="utf-8")
+
+    times, lats, lons, alts, hdops = parse_sensor_logger_gps(path)
+    assert times.tolist() == [1700000000.0, 1700000000.5]
+    assert lats.tolist() == [45.064, 45.065]
+    assert lons.tolist() == [6.408, 6.409]
+    assert alts.tolist() == [2645.0, 2646.0]
+    assert hdops.tolist() == [4.5, 99.0]
+
+
+def test_parse_sensor_logger_gps_empty(tmp_path: Path) -> None:
+    path = tmp_path / "gps.json"
+    path.write_text("[]", encoding="utf-8")
+    with pytest.raises(InvalidSegmentError, match="vide"):
+        parse_sensor_logger_gps(path)
