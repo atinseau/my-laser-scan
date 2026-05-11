@@ -203,3 +203,13 @@ class TexturedMeshRef(BaseModel):
     texture_atlas_uri: str
     material_uri: str
     n_textures: int = Field(default=0, ge=0)
+    n_textured_vertices: int = Field(default=0, ge=0)
+    n_unseen_vertices: int = Field(default=0, ge=0)
+
+
+class BakeTexturesInput(BaseModel):
+    """Input de l'activité `bake_textures` (mesh + keyframes à projeter)."""
+
+    schema_version: Literal[1] = 1
+    mesh: MeshRef
+    keyframes: KeyframesRef

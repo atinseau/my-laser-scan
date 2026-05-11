@@ -8,7 +8,9 @@
     "**/node_modules",
     "packages/ml/src/road2track_ml/gs/checkpoint.py",
     "packages/ml/src/road2track_ml/gs/losses.py",
-    "packages/ml/src/road2track_ml/gs/training.py"
+    "packages/ml/src/road2track_ml/gs/training.py",
+    "packages/ml/src/road2track_ml/mesh/extraction.py",
+    "packages/ml/src/road2track_ml/texture/baking.py"
   ],
   "pythonVersion": "3.12",
   "typeCheckingMode": "strict",

@@ -10,14 +10,15 @@ Au scaffold (It. 0) :
 - Ouvre une connexion Temporal.
 - Démarre la boucle de polling sur la task queue 'gpu'.
 
-Activités enregistrées (stubs au POC, implémentations à venir) :
-- `train_gs`        — étape 3.3, gsplat + checkpoint MinIO + FP16.
-- `extract_mesh`    — étape 3.4, 2DGS / Poisson.
-- `bake_textures`   — étape 3.5, projection + atlas + PBR.
+Activités enregistrées :
+- `train_gs`        — étape 3.3, gsplat + checkpoint MinIO + FP16 (à l'aveugle).
+- `extract_mesh`    — étape 3.4, Poisson via Open3D (à l'aveugle).
+- `bake_textures`   — étape 3.5, projection multi-vue vertex colors + atlas
+  placeholder (à l'aveugle).
 
-Les activités lèvent `NotImplementedError` tant que `packages/ml/` n'expose
-pas les entrées d'exécution. Elles ne sont **pas encore chaînées** dans
-`ProcessProject` — ce sera l'objet d'un commit dédié quand le GS sera prêt.
+Les trois activités sont câblées mais **non chaînées** dans `ProcessProject`
+tant qu'elles ne sont pas validées empiriquement sur ton PC RTX 4090.
+En cas d'absence des extras GPU installés, `ImportError` clair au runtime.
 
 ⚠️ Vérifications CUDA (driver, VRAM ≥ 16 Go) à ajouter en même temps que
 la première implémentation GPU réelle.
@@ -77,7 +78,6 @@ async def main_async() -> None:
     logger.info(
         "gpu_worker registered, polling task queue",
         activities=["train_gs", "extract_mesh", "bake_textures"],
-        note="stubs — implémentations GPU à venir",
     )
     await worker.run()
 

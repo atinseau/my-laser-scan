@@ -18,6 +18,7 @@ gs = [
 ]
 mesh = [
     "torch>=2.3",
+    "open3d>=0.18",
 ]
 seg = [
     "torch>=2.3",

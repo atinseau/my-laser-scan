@@ -3305,6 +3305,7 @@ dependencies = [
 [package.optional-dependencies]
 all = [
     { name = "gsplat" },
+    { name = "open3d" },
     { name = "torch" },
     { name = "transformers" },
 ]
@@ -3313,6 +3314,7 @@ gs = [
     { name = "torch" },
 ]
 mesh = [
+    { name = "open3d" },
     { name = "torch" },
 ]
 pbr = [
@@ -3327,6 +3329,7 @@ seg = [
 requires-dist = [
     { name = "gsplat", marker = "extra == 'gs'", specifier = ">=1.0" },
     { name = "numpy", specifier = ">=1.26" },
+    { name = "open3d", marker = "extra == 'mesh'", specifier = ">=0.18" },
     { name = "opencv-python-headless", specifier = ">=4.9" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "road2track-core", editable = "packages/core" },
