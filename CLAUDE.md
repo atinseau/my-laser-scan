@@ -4,12 +4,12 @@
 
 ## 1. Contexte en deux lignes
 
-Ce projet (`my-laser-scan`, nom interne de la stack : `road2track`) transforme une balade iPhone en circuit Assetto Corsa. La phase de cadrage est terminée, le code n'est pas encore écrit.
+Ce projet (`my-laser-scan`, nom interne de la stack : `road2track`) transforme une balade iPhone en circuit Assetto Corsa. **Itération 0 : pipeline POC implémenté de bout en bout côté software (146 unit + 9 intégration verts) ; les 3 activités GPU `train_gs`/`extract_mesh`/`bake_textures` sont écrites à l'aveugle sans GPU disponible et ne sont pas encore chaînées dans `ProcessProject` — validation empirique sur RTX 4090 en attente.**
 
 Lire en priorité :
 1. [`README.md`](./README.md) — vue produit + index documentation.
-2. [`specs/00-vision.md`](./specs/00-vision.md) — mission et hors-périmètre.
-3. [`specs/07-roadmap.md`](./specs/07-roadmap.md) — itération en cours.
+2. [`specs/07-roadmap.md`](./specs/07-roadmap.md) §Statut détaillé au handoff — pour reprendre la séance.
+3. [`docs/setup-gpu-windows.md`](./docs/setup-gpu-windows.md) — pour lancer le premier run réel.
 
 ## 2. Règles d'or à ne jamais violer
 

@@ -62,12 +62,65 @@ Exclu (pour les itérations suivantes) :
 - [ ] `uv run road2track process <project-id>` lance le workflow complet jusqu'au mesh + textures (étapes downstream à implémenter).
 - [ ] Le résultat est ouvert dans Blender et **visuellement validé** par l'utilisateur.
 - [ ] **Validation technique du pattern session activities** Temporal (cf. [ADR-019](./08-decisions.md#adr-019--session-activities-pour-chaîner-le-pipeline-gpu-dune-tuile)). Si KO, fallback documenté dans un ADR de remplacement.
-- [ ] **Cross-corrélation IMU/ARKit** opérationnelle comme fallback de la sync UTC (cf. [ADR-017](./08-decisions.md#adr-017--synchronisation-record3d--sensor-logger-via-timestamps-utc)).
+- [x] **Cross-corrélation IMU/ARKit** opérationnelle comme fallback de la sync UTC (cf. [ADR-017](./08-decisions.md#adr-017--synchronisation-record3d--sensor-logger-via-timestamps-utc)). Code dans `road2track_geo.fusion.sync.compute_sync` + `cross_correlation_offset_ms`.
 - [x] **Lint CI** qui vérifie que `pipeline/workflows/` n'importe aucun adapter (cf. [`02-architecture.md §2`](./02-architecture.md#règles-dinclusion)).
 - [x] **Health checks** au démarrage du `cpu_worker` (Temporal, Postgres, MinIO, NATS) ; même mécanisme prévu pour `gpu_worker`.
 - [ ] **Mesure empirique du temps GS 30k iter** pour valider ou ajuster le critère "< 6 h pour 1 km" du MVP (cf. `04 §3.3`).
 - [x] **Mixed precision FP16 activée** dans `train_gs` (cf. [ADR-022](./08-decisions.md#adr-022--stratégie-doptimisation-de-coût-sans-perte-de-qualité), levier #2). Câblée dans `GSTrainConfig.use_fp16=True` + `torch.amp.autocast` + `GradScaler`. Gain réel à mesurer empiriquement sur RTX 4090.
 - [ ] Production de `specs/reviews/0-end-of-iteration.md` à la fin.
+
+### Statut détaillé au handoff (snapshot 2026-05-11)
+
+> Section ajoutée pour permettre la reprise à froid. À jour de la branche
+> `claude/lidar-circuit-generator-UCDti` (commit `0d77da1` au moment d'écrire).
+
+**Code écrit, testé en CI (146 unit + 9 intégration)** :
+
+| Activité | Module | Statut | Validé hardware ? |
+|---|---|---|---|
+| `ingest_session` | `pipeline/activities/ingest.py` | ✅ implémenté | ❌ |
+| `fuse_sensors` | `pipeline/activities/fuse_sensors.py` + `geo/fusion/trajectory.py` | ✅ Kabsch ARKit↔GPS | ❌ |
+| `detect_kind_and_trim` | `pipeline/activities/detect_kind_and_trim.py` + `geo/detection/track_kind.py` | ✅ pull-forward de l'It. 1 | ❌ |
+| `select_keyframes` | `pipeline/activities/select_keyframes.py` + `geo/sampling/spatial.py` | ✅ sampling 0.5 m + ffmpeg JPEG | ❌ |
+| `train_gs` | `pipeline/activities/train_gs.py` + `ml/gs/{config,dataset,intrinsics,initialization,losses,checkpoint,ply_io,training}.py` | ✅ **à l'aveugle** (gsplat + FP16 + checkpoint MinIO 5k iter) | ❌ |
+| `extract_mesh` | `pipeline/activities/extract_mesh.py` + `ml/mesh/extraction.py` | ✅ **à l'aveugle** (Poisson Open3D + decimation) | ❌ |
+| `bake_textures` | `pipeline/activities/bake_textures.py` + `ml/texture/baking.py` | ✅ **à l'aveugle** (projection multi-vue vertex colors) | ❌ |
+
+**Workflow `ProcessProject`** chaîne **`ingest_session → fuse_sensors → detect_kind_and_trim → select_keyframes`** uniquement.
+Les trois activités GPU (`train_gs`, `extract_mesh`, `bake_textures`) sont **registrées** sur le `gpu_worker` (queue `gpu`) mais **non chaînées** dans le workflow. Décision : on attend une validation manuelle de chaque étape avant de chaîner, pour éviter de tout casser au premier run.
+
+**Limitations POC explicitement assumées** (à éventuellement adresser en It. 0 ou reporter en It. 1) :
+
+| # | Limitation | Module concerné | Impact POC visuel Blender | Bloquant It. 1 (AC export) ? |
+|---|---|---|---|---|
+| 1 | Pas de z-buffer occlusion lors du projection vertex color | `ml/texture/baking.py:_bake_vertex_colors` | ⚠️ utile si scène non 100% ouverte | oui |
+| 2 | Pas d'UV unwrap réel — atlas placeholder uniforme | `ml/texture/baking.py:_write_placeholder_atlas` | ❌ vertex colors suffisent | **oui, bloquant** |
+| 3 | Pas de blending laplacien / seam removal multi-vue | `ml/texture/baking.py` | ❌ qualité fine | nice-to-have |
+| 4 | Pas de tone mapping HDR (travail en sRGB linéaire) | `ml/texture/baking.py` | ❌ niche (scènes très contrastées) | nice-to-have |
+
+**Risques connus du code GPU "à l'aveugle"** (Module `ml/gs/training.py`) :
+- Convention quaternion gsplat (wxyz vs xyzw selon version).
+- `viewmat` = `T_camera_world` ; signe de `-R.T @ t` peut être faux selon convention ARKit.
+- `gsplat.rasterization` signature exacte (présence/absence de `packed`, `render_mode`, etc. selon version installée).
+- Mixed precision FP16 : possible NaN si `GradScaler` mal initialisé.
+- `Poisson reconstruction` Open3D : RAM ~16 Go pour 500k gaussiennes à `depth=10`.
+
+**Procédure de test (premier run sur hardware)** :
+
+1. Mac : `make up` + `tailscale serve --bg --tcp 7233 tcp://127.0.0.1:7233` (idem MinIO 9000, NATS 4222).
+2. Mac : `make worker-cpu` (process direct).
+3. PC Windows : décommenter `RUN uv sync --frozen --extra gs --extra mesh ...` dans `services/gpu_worker/Dockerfile`, puis `docker compose -f docker-compose.gpu.yml build` (≈30 min nvcc) + `up -d`. Suivre [`docs/setup-gpu-windows.md`](../docs/setup-gpu-windows.md).
+4. Capture iPhone Record3D Pro + Sensor Logger sur ~200 m boucle fermée.
+5. Mac : `uv run road2track ingest ./captures/balade_test` → exécute jusqu'à `select_keyframes`.
+6. **Étape manuelle** : déclencher `train_gs` → `extract_mesh` → `bake_textures` une par une (Temporal UI sur http://127.0.0.1:8233 OU script `tools/run_gpu_pipeline.py` à écrire). Permet de débugger chaque étape isolément.
+7. Télécharger `intermediates/<p>/<s>/textured/mesh.obj` depuis MinIO, ouvrir dans Blender, valider visuellement.
+
+**Pour clore l'It. 0** :
+- [ ] Câbler `train_gs → extract_mesh → bake_textures` dans `ProcessProject` (≈30 lignes).
+- [ ] Créer `tools/run_gpu_pipeline.py` ou `road2track process <id> --from select_keyframes` pour faciliter le re-run.
+- [ ] Z-buffer occlusion dans `bake_textures` si la qualité visuelle est insuffisante (optionnel).
+- [ ] Mesures empiriques (temps GS 30k iter, PSNR, RMSE Kabsch sur vrai GPS) à reporter dans `specs/reviews/0-end-of-iteration.md`.
+- [ ] Décision go/no-go It. 1.
 
 ### Critère go/no-go
 

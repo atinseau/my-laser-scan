@@ -2,7 +2,7 @@
 
 > **Outil qui transforme une simple balade iPhone en circuit jouable dans Assetto Corsa**, avec un effort utilisateur trivial et un rendu visuel photoréaliste.
 
-[![Statut](https://img.shields.io/badge/statut-pré--POC-orange)](./specs/07-roadmap.md)
+[![Statut](https://img.shields.io/badge/statut-It.%200%20software%20complet%20%E2%80%94%20validation%20hardware%20en%20attente-yellow)](./specs/07-roadmap.md)
 [![Stack](https://img.shields.io/badge/stack-Python%203.12%20%7C%20Temporal%20%7C%20uv-blue)](./specs/03-stack-technique.md)
 [![Architecture](https://img.shields.io/badge/architecture-hexagonale-green)](./specs/02-architecture.md)
 [![Licence](https://img.shields.io/badge/licence-privée-lightgrey)](#licence)
@@ -27,7 +27,8 @@ Métaphore : **Strava pour le sim racing**. L'utilisateur capture, attend, tél�
 
 ## Statut du projet
 
-🚧 **Pré-POC**. Aucune ligne de code applicatif n'est encore écrite. La phase de cadrage est terminée. Le démarrage de l'**itération 0** (POC qualité texturale) est imminent.
+🚧 **Itération 0 — software complet, validation hardware en attente** (snapshot 2026-05-11).
+Toutes les activités du pipeline POC (`ingest_session`, `fuse_sensors`, `detect_kind_and_trim`, `select_keyframes`, `train_gs`, `extract_mesh`, `bake_textures`) sont implémentées et testées en CI (146 tests unit + 9 intégration verts). Les 3 activités GPU (`train_gs`, `extract_mesh`, `bake_textures`) ont été écrites **à l'aveugle** sans GPU disponible et **ne sont pas encore chaînées** dans le workflow. Reste à exécuter sur le PC RTX 4090 + capture iPhone réelle pour valider qualité visuelle dans Blender. Détails : [`specs/07-roadmap.md §Statut détaillé au handoff`](./specs/07-roadmap.md).
 
 Voir [`specs/07-roadmap.md`](./specs/07-roadmap.md) pour le plan complet.
 

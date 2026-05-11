@@ -39,4 +39,5 @@ Ce dossier contient l'**ensemble du cahier des charges** du projet. Il sert de s
 
 ## Statut du projet
 
-🚧 **Pré-POC**. Aucune ligne de code applicatif n'est encore écrite. Le projet est en phase de cadrage. Voir [`07-roadmap.md`](./07-roadmap.md) pour le plan d'attaque.
+🚧 **Itération 0 — software complet, validation hardware en attente** (snapshot 2026-05-11).
+Pipeline POC implémenté de bout en bout côté code ; les 3 dernières activités (train_gs, extract_mesh, bake_textures) ont été écrites à l'aveugle sans GPU disponible et ne sont pas chaînées. Reste à exécuter sur PC RTX 4090. Voir [`07-roadmap.md`](./07-roadmap.md) §Statut détaillé au handoff.
