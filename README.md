@@ -185,6 +185,13 @@ Toute la documentation produit / technique vit dans [`specs/`](./specs/). Pour d
 | [`specs/08-decisions.md`](./specs/08-decisions.md) | ADRs (15 décisions actées) | tu remets en question un choix |
 | [`specs/09-questions-ouvertes.md`](./specs/09-questions-ouvertes.md) | Décisions à prendre | tu démarres une feature qui en dépend |
 
+Guides opérationnels pas-à-pas dans [`docs/`](./docs/) :
+
+| Guide | Sujet |
+|---|---|
+| [`docs/setup-gpu-windows.md`](./docs/setup-gpu-windows.md) | Démarrer le `gpu_worker` sur le PC RTX 4090, relier au Mac via Tailscale |
+| [`docs/setup-gpu-cloud.md`](./docs/setup-gpu-cloud.md) | Lancer un `gpu_worker` sur RunPod (spot + checkpointing ADR-022) |
+
 ---
 
 ## Statut des fonctionnalités

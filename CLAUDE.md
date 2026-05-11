@@ -137,6 +137,8 @@ uv run road2track gpu shutdown --all
 | Quand cette feature doit-elle être livrée ? | [`specs/07-roadmap.md`](./specs/07-roadmap.md) |
 | Pourquoi a-t-on choisi X ? | [`specs/08-decisions.md`](./specs/08-decisions.md) |
 | Cette décision est-elle déjà actée ? | [`specs/08-decisions.md`](./specs/08-decisions.md) ou [`specs/09-questions-ouvertes.md`](./specs/09-questions-ouvertes.md) |
+| Comment je démarre le worker GPU sur mon PC ? | [`docs/setup-gpu-windows.md`](./docs/setup-gpu-windows.md) |
+| Comment je lance un pod GPU sur RunPod ? | [`docs/setup-gpu-cloud.md`](./docs/setup-gpu-cloud.md) |
 
 ## 7. Anti-patterns interdits
 
