@@ -13,6 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from road2track_core.entities.track_kind import TrackKind
 from road2track_core.ids import ProjectId, SegmentId
 
 
@@ -58,9 +59,7 @@ class SyncResult(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    drift_ms: float = Field(
-        description="Drift brut entre les premiers timestamps des deux flux."
-    )
+    drift_ms: float = Field(description="Drift brut entre les premiers timestamps des deux flux.")
     offset_applied_ms: float = Field(
         default=0.0,
         description="Offset à appliquer au flux IMU pour l'aligner sur ARKit. "
@@ -105,3 +104,24 @@ class TrajectoryRef(BaseModel):
     origin_t: float = Field(description="Timestamp UTC du fix GPS d'origine")
     alignment_rmse_m: float = Field(default=0.0, ge=0.0)
     n_gps_fixes_used: int = Field(default=0, ge=0)
+
+
+class DetectedTrackRef(BaseModel):
+    """Référence à une trajectoire tronquée + nature détectée (`detect_kind_and_trim`).
+
+    Cf. specs/04-pipeline-ml.md §2.3, ADR-007, ADR-016. Pour SPECIALE aucun trim
+    n'est appliqué (`n_samples_trimmed_at_start = 0`).
+    """
+
+    schema_version: Literal[1] = 1
+    project_id: ProjectId
+    segment_id: SegmentId
+    track_kind: TrackKind
+    trimmed_trajectory_uri: str
+    n_samples: int = Field(ge=0)
+    arc_length_m: float = Field(default=0.0, ge=0.0)
+    loop_closure_distance_m: float = Field(
+        ge=0.0,
+        description="Distance euclidienne start↔end dans le repère ENU (m).",
+    )
+    n_samples_trimmed_at_start: int = Field(default=0, ge=0)

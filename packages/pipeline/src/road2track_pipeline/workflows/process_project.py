@@ -3,9 +3,9 @@
 Au bootstrap (It. 0), enchaîne :
 1. `ingest_session` → SegmentRef (capture validée + uploadée + persistée)
 2. `fuse_sensors` → TrajectoryRef (trajectoire fusionnée ENU + uploadée)
+3. `detect_kind_and_trim` → DetectedTrackRef (circuit/spéciale + trim lead-in)
 
-Étapes amont/aval (`detect_kind_and_trim`, `tile`, ProcessTile, etc.) viendront
-au fur et à mesure de l'It. 0.
+Étapes amont/aval (`tile`, ProcessTile, etc.) viendront au fur et à mesure de l'It. 0.
 
 ⚠️ Imports : uniquement `road2track_core` (règle dure ADR-012). Les activités sont
 référencées par leur **nom string** pour ne pas tirer les adapters.
@@ -16,7 +16,12 @@ from __future__ import annotations
 from datetime import timedelta
 
 from pydantic import BaseModel
-from road2track_core.entities.refs import IngestInput, SegmentRef, TrajectoryRef
+from road2track_core.entities.refs import (
+    DetectedTrackRef,
+    IngestInput,
+    SegmentRef,
+    TrajectoryRef,
+)
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -26,6 +31,7 @@ class ProcessProjectResult(BaseModel):
 
     segment: SegmentRef
     trajectory: TrajectoryRef
+    detected: DetectedTrackRef
 
 
 @workflow.defn(name="ProcessProject")
@@ -50,4 +56,11 @@ class ProcessProject:
             retry_policy=retry,
         )
 
-        return ProcessProjectResult(segment=segment, trajectory=trajectory)
+        detected: DetectedTrackRef = await workflow.execute_activity(
+            "detect_kind_and_trim",
+            trajectory,
+            schedule_to_close_timeout=timedelta(minutes=5),
+            retry_policy=retry,
+        )
+
+        return ProcessProjectResult(segment=segment, trajectory=trajectory, detected=detected)

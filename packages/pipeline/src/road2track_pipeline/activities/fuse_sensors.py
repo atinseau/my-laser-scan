@@ -125,19 +125,11 @@ async def fuse_sensors(segment_ref: SegmentRef) -> TrajectoryRef:
         # Téléchargement minimal : on prend juste poses.json + gps.json.
         poses_local = local_dir / "record3d" / "poses.json"
         gps_local = local_dir / "sensor_logger" / "gps.json"
-        await storage.download_file(
-            raw_bucket, f"{raw_prefix}/record3d/poses.json", poses_local
-        )
-        await storage.download_file(
-            raw_bucket, f"{raw_prefix}/sensor_logger/gps.json", gps_local
-        )
+        await storage.download_file(raw_bucket, f"{raw_prefix}/record3d/poses.json", poses_local)
+        await storage.download_file(raw_bucket, f"{raw_prefix}/sensor_logger/gps.json", gps_local)
         logger.info("inputs downloaded")
 
-        arkit_t, arkit_pos = parse_record3d_poses(poses_local)
-        # Au POC, on n'a pas les quaternions parsés (parse_record3d_poses ne retourne
-        # que t + pos). On reconstruit des quat identité — TODO étendre le parser
-        # pour extraire les quaternions des matrices 4x4.
-        arkit_quat = np.tile(np.array([1.0, 0.0, 0.0, 0.0]), (arkit_t.shape[0], 1))
+        arkit_t, arkit_pos, arkit_quat = parse_record3d_poses(poses_local)
 
         gps_t, gps_lat, gps_lon, gps_alt, gps_hdop = parse_sensor_logger_gps(gps_local)
         logger.info(
@@ -148,8 +140,14 @@ async def fuse_sensors(segment_ref: SegmentRef) -> TrajectoryRef:
         )
 
         fused = fuse_trajectory(
-            arkit_t, arkit_pos, arkit_quat,
-            gps_t, gps_lat, gps_lon, gps_alt, gps_hdop,
+            arkit_t,
+            arkit_pos,
+            arkit_quat,
+            gps_t,
+            gps_lat,
+            gps_lon,
+            gps_alt,
+            gps_hdop,
         )
         logger.info(
             "trajectory fused",

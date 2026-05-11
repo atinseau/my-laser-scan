@@ -74,6 +74,7 @@ def ingest(path: Path = _PATH_ARG, project_id: str | None = _PROJECT_ID_OPT) -> 
         result = await handle.result()
         seg = result.segment
         traj = result.trajectory
+        detected = result.detected
         typer.echo("✅ traitement terminé")
         typer.echo(f"  project_id    : {seg.project_id}")
         typer.echo(f"  segment_id    : {seg.segment_id}")
@@ -103,6 +104,12 @@ def ingest(path: Path = _PATH_ARG, project_id: str | None = _PROJECT_ID_OPT) -> 
             f"alt {traj.origin_alt:.1f} m)"
         )
         typer.echo(f"  trajectory uri: {traj.trajectory_uri}")
+        typer.echo(
+            f"  type détecté  : {detected.track_kind.value} "
+            f"(closure={detected.loop_closure_distance_m:.1f} m, "
+            f"trim lead-in={detected.n_samples_trimmed_at_start} poses)"
+        )
+        typer.echo(f"  trajectoire tronquée : {detected.trimmed_trajectory_uri}")
 
     asyncio.run(run())
 

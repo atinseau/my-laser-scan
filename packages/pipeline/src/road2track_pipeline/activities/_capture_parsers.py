@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 from road2track_core.errors import InvalidSegmentError
+from scipy.spatial.transform import Rotation
 
 
 def _as_float(value: object) -> float:
@@ -28,7 +29,7 @@ def _as_float(value: object) -> float:
 
 def parse_record3d_poses(
     path: Path,
-) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Parse `record3d/poses.json`.
 
     Format attendu (tolérant) :
@@ -42,8 +43,9 @@ def parse_record3d_poses(
           ]
         }
 
-    Retourne (timestamps_s, positions_xyz). Position extraite de la 4e colonne
-    de la matrice 4x4.
+    Retourne (timestamps_s, positions_xyz, quaternions_wxyz). Position extraite
+    de la 4e colonne de la matrice 4x4, quaternion converti depuis le bloc 3x3
+    de rotation (convention de stockage interne : w, x, y, z).
     """
     if not path.is_file():
         raise InvalidSegmentError(f"poses.json introuvable: {path}")
@@ -54,6 +56,7 @@ def parse_record3d_poses(
 
     times_list: list[float] = []
     positions_list: list[list[float]] = []
+    rotation_matrices: list[NDArray[np.float64]] = []
     for f in frames:
         if not isinstance(f, dict):
             continue
@@ -68,10 +71,16 @@ def parse_record3d_poses(
         positions_list.append(
             [float(transform[0, 3]), float(transform[1, 3]), float(transform[2, 3])]
         )
+        rotation_matrices.append(transform[0:3, 0:3])
+
+    rotations = Rotation.from_matrix(np.stack(rotation_matrices))
+    quat_xyzw = rotations.as_quat()
+    quat_wxyz = quat_xyzw[:, [3, 0, 1, 2]]
 
     return (
         np.asarray(times_list, dtype=np.float64),
         np.asarray(positions_list, dtype=np.float64),
+        quat_wxyz.astype(np.float64),
     )
 
 

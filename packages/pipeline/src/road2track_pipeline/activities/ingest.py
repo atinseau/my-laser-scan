@@ -60,13 +60,9 @@ def _validate_capture_dir(local_dir: Path) -> None:
     if not local_dir.is_dir():
         raise InvalidSegmentError(f"capture directory not found: {local_dir}")
 
-    missing: list[str] = [
-        rel for rel in REQUIRED_PATHS if not (local_dir / rel).is_file()
-    ]
+    missing: list[str] = [rel for rel in REQUIRED_PATHS if not (local_dir / rel).is_file()]
     if missing:
-        raise InvalidSegmentError(
-            f"missing required files in {local_dir}: {', '.join(missing)}"
-        )
+        raise InvalidSegmentError(f"missing required files in {local_dir}: {', '.join(missing)}")
 
 
 async def _upload_capture(
@@ -114,7 +110,7 @@ async def ingest_session(payload: IngestInput) -> SegmentRef:
     # 2 + 3. Synchronisation Record3D ARKit ↔ Sensor Logger IMU (cf. ADR-017).
     poses_path = local_dir / "record3d" / "poses.json"
     imu_path = find_imu_file(local_dir)
-    arkit_t, arkit_pos = parse_record3d_poses(poses_path)
+    arkit_t, arkit_pos, _arkit_quat = parse_record3d_poses(poses_path)
     imu_t, imu_acc = parse_sensor_logger_imu(imu_path)
     sync = compute_sync(arkit_t, arkit_pos, imu_t, imu_acc)
     logger.info(
@@ -210,9 +206,7 @@ async def ingest_session(payload: IngestInput) -> SegmentRef:
                 )
                 logger.info("project auto-created", project_id=payload.project_id)
             else:
-                await project_repo.update_status(
-                    payload.project_id, ProjectStatus.CAPTURING
-                )
+                await project_repo.update_status(payload.project_id, ProjectStatus.CAPTURING)
 
             segment_repo = PostgresSegmentRepository(session)
             await segment_repo.create(

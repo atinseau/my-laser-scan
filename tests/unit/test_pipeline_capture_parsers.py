@@ -19,11 +19,33 @@ from road2track_pipeline.activities._capture_parsers import (
 def _identity_pose(tx: float, ty: float, tz: float) -> list[float]:
     """Matrice 4x4 row-major avec une translation donnée."""
     return [
-        1.0, 0.0, 0.0, tx,
-        0.0, 1.0, 0.0, ty,
-        0.0, 0.0, 1.0, tz,
-        0.0, 0.0, 0.0, 1.0,
+        1.0,
+        0.0,
+        0.0,
+        tx,
+        0.0,
+        1.0,
+        0.0,
+        ty,
+        0.0,
+        0.0,
+        1.0,
+        tz,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     ]
+
+
+def _rotated_pose(
+    rotation_matrix: np.ndarray, translation: tuple[float, float, float]
+) -> list[float]:
+    """Matrice 4x4 row-major construite depuis un bloc R 3x3 + translation."""
+    transform = np.eye(4)
+    transform[0:3, 0:3] = rotation_matrix
+    transform[0:3, 3] = translation
+    return transform.reshape(-1).tolist()
 
 
 def test_parse_record3d_poses_extracts_xyz(tmp_path: Path) -> None:
@@ -36,11 +58,30 @@ def test_parse_record3d_poses_extracts_xyz(tmp_path: Path) -> None:
     path = tmp_path / "poses.json"
     path.write_text(json.dumps(poses), encoding="utf-8")
 
-    times, positions = parse_record3d_poses(path)
+    times, positions, quaternions = parse_record3d_poses(path)
 
     assert times.tolist() == [1700000000.0, 1700000000.5]
     np.testing.assert_array_almost_equal(positions[0], [1.0, 2.0, 3.0])
     np.testing.assert_array_almost_equal(positions[1], [1.5, 2.5, 3.5])
+    np.testing.assert_array_almost_equal(quaternions[0], [1.0, 0.0, 0.0, 0.0])
+    np.testing.assert_array_almost_equal(quaternions[1], [1.0, 0.0, 0.0, 0.0])
+
+
+def test_parse_record3d_poses_extracts_rotation(tmp_path: Path) -> None:
+    rot_z_90 = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+    poses = {
+        "frames": [
+            {"timestamp": 1.0, "T_world_camera": _rotated_pose(rot_z_90, (0.0, 0.0, 0.0))},
+        ]
+    }
+    path = tmp_path / "poses.json"
+    path.write_text(json.dumps(poses), encoding="utf-8")
+
+    _, _, quaternions = parse_record3d_poses(path)
+    sqrt2_over_2 = float(np.sqrt(2.0) / 2.0)
+    np.testing.assert_array_almost_equal(
+        quaternions[0], [sqrt2_over_2, 0.0, 0.0, sqrt2_over_2], decimal=6
+    )
 
 
 def test_parse_record3d_poses_missing_file(tmp_path: Path) -> None:
