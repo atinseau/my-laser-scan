@@ -56,6 +56,16 @@ def _nats_check(settings: Settings) -> Callable[[], Awaitable[CheckResult]]:
     return lambda: _check_tcp(host, port, "NATS")
 
 
+def gpu_worker_checks(settings: Settings) -> list[Callable[[], Awaitable[CheckResult]]]:
+    """Set de health checks pour le gpu_worker : Temporal + MinIO uniquement.
+
+    Pas de Postgres : le gpu_worker ne touche pas la DB applicative (les
+    persistance Postgres se font côté cpu_worker via les activités d'ingest).
+    Pas de NATS : on n'a pas (encore) d'event bus inter-workers requis ici.
+    """
+    return [_temporal_check(settings), _minio_check(settings)]
+
+
 async def run_health_checks(
     settings: Settings, checks: list[Callable[[], Awaitable[CheckResult]]] | None = None
 ) -> list[CheckResult]:

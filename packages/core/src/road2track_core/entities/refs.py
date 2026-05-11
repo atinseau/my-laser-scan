@@ -155,3 +155,51 @@ class KeyframesRef(BaseModel):
     n_keyframes: int = Field(ge=0)
     min_spacing_m: float = Field(ge=0.0)
     arc_length_m: float = Field(default=0.0, ge=0.0)
+
+
+class SceneRef(BaseModel):
+    """Référence à une scène Gaussian Splatting entraînée (`train_gs`).
+
+    Cf. specs/04-pipeline-ml.md §3.3. Output : `scene.ply` + métadonnées
+    d'entraînement (config gsplat, métriques PSNR/LPIPS, n_iterations).
+    """
+
+    schema_version: Literal[1] = 1
+    project_id: ProjectId
+    segment_id: SegmentId
+    scene_uri: str = Field(description="s3://intermediates/<p>/<s>/scene.ply")
+    metrics_uri: str = Field(
+        description="s3://intermediates/<p>/<s>/training_metrics.json"
+    )
+    n_iterations: int = Field(default=0, ge=0)
+    n_gaussians: int = Field(default=0, ge=0)
+
+
+class MeshRef(BaseModel):
+    """Référence à un mesh extrait depuis la scène GS (`extract_mesh`).
+
+    Cf. specs/04-pipeline-ml.md §3.4. Mesh non texturé (`mesh.obj`) +
+    métadonnées de décimation / UV unwrap.
+    """
+
+    schema_version: Literal[1] = 1
+    project_id: ProjectId
+    segment_id: SegmentId
+    mesh_uri: str = Field(description="s3://intermediates/<p>/<s>/mesh.obj")
+    n_vertices: int = Field(default=0, ge=0)
+    n_faces: int = Field(default=0, ge=0)
+
+
+class TexturedMeshRef(BaseModel):
+    """Référence à un mesh texturé (`bake_textures`).
+
+    Cf. specs/04-pipeline-ml.md §3.5. Mesh OBJ + atlas de textures + materials.
+    """
+
+    schema_version: Literal[1] = 1
+    project_id: ProjectId
+    segment_id: SegmentId
+    mesh_uri: str
+    texture_atlas_uri: str
+    material_uri: str
+    n_textures: int = Field(default=0, ge=0)
