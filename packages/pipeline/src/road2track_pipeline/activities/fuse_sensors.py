@@ -21,6 +21,7 @@ from pathlib import Path
 
 import numpy as np
 import structlog
+from numpy.typing import NDArray
 from road2track_core.config import Settings
 from road2track_core.entities.refs import SegmentRef, TrajectoryRef
 from road2track_geo.fusion.trajectory import fuse_trajectory
@@ -38,9 +39,9 @@ logger = structlog.get_logger(__name__)
 def _serialize_trajectory_json(
     project_id: str,
     segment_id: str,
-    times_s: np.ndarray,
-    positions_enu: np.ndarray,
-    quaternions_wxyz: np.ndarray,
+    times_s: NDArray[np.float64],
+    positions_enu: NDArray[np.float64],
+    quaternions_wxyz: NDArray[np.float64],
     origin_lat: float,
     origin_lon: float,
     origin_alt: float,
@@ -92,7 +93,7 @@ def _serialize_trajectory_json(
     return json.dumps(payload).encode("utf-8")
 
 
-def _arc_length_m(positions_enu: np.ndarray) -> float:
+def _arc_length_m(positions_enu: NDArray[np.float64]) -> float:
     if positions_enu.shape[0] < 2:
         return 0.0
     diffs = np.diff(positions_enu, axis=0)

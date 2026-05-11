@@ -13,11 +13,13 @@ Stratégie :
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import numpy as np
 from numpy.typing import NDArray
 from road2track_core.entities.refs import SyncResult
 from road2track_core.errors import InvalidSegmentError
-from scipy.signal import correlate
+from scipy.signal import correlate  # type: ignore[import-untyped]
 
 # Seuils par défaut, alignés avec specs/04-pipeline-ml.md §2.1bis.
 UTC_DRIFT_THRESHOLD_MS: float = 100.0
@@ -64,8 +66,10 @@ def cross_correlation_offset_ms(
     a_n = (a - a.mean()) / (a.std() + 1e-9)
     b_n = (b - b.mean()) / (b.std() + 1e-9)
 
-    corr = correlate(a_n, b_n, mode="same")
-    corr_normalized = corr / max(len(a_n), 1)
+    corr: NDArray[np.float64] = cast(
+        NDArray[np.float64], cast(Any, correlate)(a_n, b_n, mode="same")
+    )
+    corr_normalized: NDArray[np.float64] = corr / max(len(a_n), 1)
 
     abs_corr = np.abs(corr_normalized)
     peak_idx = int(np.argmax(abs_corr))

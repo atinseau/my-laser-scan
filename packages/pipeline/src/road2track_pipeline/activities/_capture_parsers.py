@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -49,17 +50,20 @@ def parse_record3d_poses(
     """
     if not path.is_file():
         raise InvalidSegmentError(f"poses.json introuvable: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    frames = data.get("frames", []) if isinstance(data, dict) else []
-    if not frames:
+    data: Any = json.loads(path.read_text(encoding="utf-8"))
+    frames_raw: list[Any] = (
+        cast(list[Any], data.get("frames", [])) if isinstance(data, dict) else []
+    )
+    if not frames_raw:
         raise InvalidSegmentError(f"poses.json sans frames: {path}")
 
     times_list: list[float] = []
     positions_list: list[list[float]] = []
     rotation_matrices: list[NDArray[np.float64]] = []
-    for f in frames:
-        if not isinstance(f, dict):
+    for f_raw in frames_raw:
+        if not isinstance(f_raw, dict):
             continue
+        f = cast(dict[str, Any], f_raw)
         ts_raw = f.get("timestamp", f.get("time"))
         if ts_raw is None:
             raise InvalidSegmentError(f"frame sans timestamp dans {path}")
@@ -100,16 +104,21 @@ def parse_sensor_logger_imu(
     """
     if not path.is_file():
         raise InvalidSegmentError(f"imu file introuvable: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    samples = data if isinstance(data, list) else data.get("samples", [])
-    if not samples:
+    data: Any = json.loads(path.read_text(encoding="utf-8"))
+    samples_raw: list[Any] = (
+        cast(list[Any], data)
+        if isinstance(data, list)
+        else cast(list[Any], data.get("samples", []))
+    )
+    if not samples_raw:
         raise InvalidSegmentError(f"flux IMU vide: {path}")
 
     times_list: list[float] = []
     accels_list: list[list[float]] = []
-    for s in samples:
-        if not isinstance(s, dict):
+    for s_raw in samples_raw:
+        if not isinstance(s_raw, dict):
             continue
+        s = cast(dict[str, Any], s_raw)
         ts_raw = s.get("time", s.get("timestamp", s.get("t")))
         if ts_raw is None:
             raise InvalidSegmentError(f"échantillon IMU sans timestamp dans {path}")
@@ -168,9 +177,13 @@ def parse_sensor_logger_gps(
     """
     if not path.is_file():
         raise InvalidSegmentError(f"gps.json introuvable: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    samples = data if isinstance(data, list) else data.get("samples", [])
-    if not samples:
+    data: Any = json.loads(path.read_text(encoding="utf-8"))
+    samples_raw: list[Any] = (
+        cast(list[Any], data)
+        if isinstance(data, list)
+        else cast(list[Any], data.get("samples", []))
+    )
+    if not samples_raw:
         raise InvalidSegmentError(f"flux GPS vide: {path}")
 
     times: list[float] = []
@@ -178,9 +191,10 @@ def parse_sensor_logger_gps(
     lons: list[float] = []
     alts: list[float] = []
     hdops: list[float] = []
-    for s in samples:
-        if not isinstance(s, dict):
+    for s_raw in samples_raw:
+        if not isinstance(s_raw, dict):
             continue
+        s = cast(dict[str, Any], s_raw)
         ts_raw = s.get("time", s.get("timestamp", s.get("t")))
         if ts_raw is None:
             raise InvalidSegmentError(f"échantillon GPS sans timestamp dans {path}")
@@ -188,7 +202,7 @@ def parse_sensor_logger_gps(
         lats.append(_as_float(s.get("latitude", s.get("lat", 0.0))))
         lons.append(_as_float(s.get("longitude", s.get("lon", 0.0))))
         alts.append(_as_float(s.get("altitude", s.get("alt", 0.0))))
-        hdop_raw = s.get("horizontalAccuracy", s.get("hdop", 9999.0))
+        hdop_raw: Any = s.get("horizontalAccuracy", s.get("hdop", 9999.0))
         hdops.append(_as_float(hdop_raw))
 
     return (

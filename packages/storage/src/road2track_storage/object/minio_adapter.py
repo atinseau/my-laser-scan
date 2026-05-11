@@ -7,8 +7,9 @@ par `make up` (cf. specs/05-infrastructure.md §4).
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
-import aioboto3
+import aioboto3  # type: ignore[import-untyped]
 import structlog
 from botocore.exceptions import ClientError
 from road2track_core.errors import StorageError
@@ -38,9 +39,9 @@ class MinioObjectStorage:
         self._access_key = access_key
         self._secret_key = secret_key
         self._region = region
-        self._session = aioboto3.Session()
+        self._session: Any = aioboto3.Session()
 
-    def _client(self) -> object:
+    def _client(self) -> Any:  # noqa: ANN401 — aioboto3 sans stubs
         return self._session.client(
             "s3",
             endpoint_url=self._endpoint_url,
@@ -54,7 +55,9 @@ class MinioObjectStorage:
             try:
                 await s3.head_bucket(Bucket=bucket)
             except ClientError as e:
-                code = e.response.get("Error", {}).get("Code", "")
+                response: dict[str, Any] = cast(dict[str, Any], e.response)
+                error_section: dict[str, Any] = response.get("Error", {})
+                code: str = str(error_section.get("Code", ""))
                 if code in {"404", "NoSuchBucket"}:
                     logger.info("creating bucket", bucket=bucket)
                     await s3.create_bucket(Bucket=bucket)
@@ -96,12 +99,13 @@ class MinioObjectStorage:
         async with self._client() as s3:
             paginator = s3.get_paginator("list_objects_v2")
             async for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-                for obj in page.get("Contents", []) or []:
-                    key = obj["Key"]
-                    relative = key[len(prefix):]
+                contents: list[dict[str, Any]] = page.get("Contents", []) or []
+                for obj in contents:
+                    key: str = obj["Key"]
+                    relative: str = key[len(prefix) :]
                     if not relative:
                         continue
-                    target = local_dir / relative
+                    target: Path = local_dir / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
                     await s3.download_file(bucket, key, str(target))
                     file_count += 1

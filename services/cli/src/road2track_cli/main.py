@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import cast
 
 import structlog
 import typer
@@ -20,6 +21,7 @@ from road2track_core.entities.refs import IngestInput
 from road2track_core.ids import new_project_id
 from road2track_pipeline.client import start_process_project
 from road2track_pipeline.logging_setup import configure_logging
+from road2track_pipeline.workflows.process_project import ProcessProjectResult
 
 app = typer.Typer(
     name="road2track",
@@ -71,7 +73,7 @@ def ingest(path: Path = _PATH_ARG, project_id: str | None = _PROJECT_ID_OPT) -> 
     async def run() -> None:
         handle = await start_process_project(payload, workflow_id=workflow_id)
         typer.echo(f"workflow démarré : {handle.id} (run_id: {handle.result_run_id})")
-        result = await handle.result()
+        result = cast(ProcessProjectResult, await handle.result())
         seg = result.segment
         traj = result.trajectory
         detected = result.detected

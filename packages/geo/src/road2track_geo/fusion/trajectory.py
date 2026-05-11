@@ -107,7 +107,10 @@ def kabsch_align(
     tgt_centered = tgt - tgt_centroid
 
     # scipy.spatial.transform.Rotation.align_vectors : minimise ||R @ src_i - tgt_i||².
-    rot, rmsd = Rotation.align_vectors(tgt_centered, src_centered)
+    # Sans `return_sensitivity=True` la signature retourne (Rotation, float),
+    # mais le stub déclare une union. On extrait les deux premiers éléments.
+    aligned = Rotation.align_vectors(tgt_centered, src_centered)
+    rot, rmsd = aligned[0], float(aligned[1])
     rot_matrix = rot.as_matrix()
     translation = tgt_centroid - rot_matrix @ src_centroid
     return rot_matrix, translation, float(rmsd)
