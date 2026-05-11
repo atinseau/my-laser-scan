@@ -66,7 +66,7 @@ Exclu (pour les itérations suivantes) :
 - [x] **Lint CI** qui vérifie que `pipeline/workflows/` n'importe aucun adapter (cf. [`02-architecture.md §2`](./02-architecture.md#règles-dinclusion)).
 - [x] **Health checks** au démarrage du `cpu_worker` (Temporal, Postgres, MinIO, NATS) ; même mécanisme prévu pour `gpu_worker`.
 - [ ] **Mesure empirique du temps GS 30k iter** pour valider ou ajuster le critère "< 6 h pour 1 km" du MVP (cf. `04 §3.3`).
-- [ ] **Mixed precision FP16 activée** dans `train_gs` (cf. [ADR-022](./08-decisions.md#adr-022--stratégie-doptimisation-de-coût-sans-perte-de-qualité), levier #2). Gain attendu : +30 à +50% de vitesse, qualité validée stable.
+- [x] **Mixed precision FP16 activée** dans `train_gs` (cf. [ADR-022](./08-decisions.md#adr-022--stratégie-doptimisation-de-coût-sans-perte-de-qualité), levier #2). Câblée dans `GSTrainConfig.use_fp16=True` + `torch.amp.autocast` + `GradScaler`. Gain réel à mesurer empiriquement sur RTX 4090.
 - [ ] Production de `specs/reviews/0-end-of-iteration.md` à la fin.
 
 ### Critère go/no-go

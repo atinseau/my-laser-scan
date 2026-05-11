@@ -1,36 +1,30 @@
-"""Tests sur les stubs GPU (train_gs, extract_mesh, bake_textures).
+"""Tests sur les activités GPU (train_gs / extract_mesh / bake_textures).
 
-Au scaffold (It. 0) ils lèvent `NotImplementedError`. Ce test verrouille la
-signature et l'enregistrement Temporal pour éviter qu'une régression silencieuse
-casse le câblage avant la vraie implémentation.
+- `train_gs` est maintenant **câblée** : DL MinIO → load dataset → train() → upload.
+  Pour la tester end-to-end il faut MinIO + torch + GPU (cf.
+  `tests/integration/pipeline/test_train_gs.py`). Ici on se contente de vérifier
+  que `road2track_ml.gs.train(...)` lève `ImportError` quand torch n'est pas
+  installé (cas du sandbox CPU-only).
+- `extract_mesh` et `bake_textures` restent des stubs `NotImplementedError`.
 """
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
+
 import pytest
 from road2track_core.entities.refs import (
-    KeyframesRef,
     MeshRef,
     SceneRef,
     TexturedMeshRef,
 )
+from road2track_ml.gs import GSTrainConfig, KeyframesDataset
+from road2track_ml.gs.training import _check_runtime_available, train
 from road2track_pipeline.activities import (
     bake_textures,
     extract_mesh,
-    train_gs,
 )
-
-
-def _keyframes_ref() -> KeyframesRef:
-    return KeyframesRef(
-        project_id="prj_test",
-        segment_id="seg_test",
-        manifest_uri="s3://intermediates/prj_test/seg_test/keyframes.json",
-        images_uri_prefix="s3://intermediates/prj_test/seg_test/keyframes/",
-        n_keyframes=100,
-        min_spacing_m=0.5,
-        arc_length_m=50.0,
-    )
 
 
 def _scene_ref() -> SceneRef:
@@ -54,16 +48,31 @@ def _mesh_ref() -> MeshRef:
     )
 
 
-# Pour appeler une activité hors d'un worker Temporal, on accède au callable wrappé.
 def _callable_of(activity_def: object) -> object:
     return getattr(activity_def, "__wrapped__", activity_def)
 
 
-@pytest.mark.asyncio
-async def test_train_gs_stub_raises() -> None:
-    fn = _callable_of(train_gs)
-    with pytest.raises(NotImplementedError, match="train_gs"):
-        await fn(_keyframes_ref())  # type: ignore[operator]
+_TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
+
+
+@pytest.mark.skipif(
+    _TORCH_AVAILABLE,
+    reason="torch installé : on ne peut pas vérifier l'ImportError attendu",
+)
+def test_check_runtime_raises_without_torch() -> None:
+    with pytest.raises(ImportError, match="torch"):
+        _check_runtime_available()
+
+
+@pytest.mark.skipif(
+    _TORCH_AVAILABLE, reason="torch installé : `train` ne lèvera pas ImportError"
+)
+def test_train_raises_import_error_without_torch(tmp_path: Path) -> None:
+    config = GSTrainConfig()
+    # Dataset minimum non utilisé — `train` doit lever avant de l'utiliser.
+    dataset = object.__new__(KeyframesDataset)
+    with pytest.raises(ImportError):
+        train(config, dataset, tmp_path)  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio

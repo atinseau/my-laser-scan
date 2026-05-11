@@ -28,6 +28,10 @@ ignore = [
 [lint.per-file-ignores]
 "tests/**" = ["ANN", "ARG"]
 "scripts/**" = ["T20"]
+# Le module GS enveloppe torch + gsplat (non typés et non installés en CI
+# CPU-only via l'extra `gs`). On accepte `Any` aux signatures internes ; la
+# frontière typée reste l'API publique de `road2track_ml.gs.__init__`.
+"packages/ml/src/road2track_ml/gs/**" = ["ANN401"]
 
 [format]
 quote-style = "double"

@@ -1,6 +1,15 @@
 {
   "include": ["packages", "services", "scripts"],
-  "exclude": ["**/__pycache__", "**/.venv", "**/build", "**/dist", "**/node_modules"],
+  "exclude": [
+    "**/__pycache__",
+    "**/.venv",
+    "**/build",
+    "**/dist",
+    "**/node_modules",
+    "packages/ml/src/road2track_ml/gs/checkpoint.py",
+    "packages/ml/src/road2track_ml/gs/losses.py",
+    "packages/ml/src/road2track_ml/gs/training.py"
+  ],
   "pythonVersion": "3.12",
   "typeCheckingMode": "strict",
   "reportMissingImports": "error",
