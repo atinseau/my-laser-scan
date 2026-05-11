@@ -27,6 +27,7 @@ from road2track_pipeline.activities import (
     detect_kind_and_trim,
     fuse_sensors,
     ingest_session,
+    select_keyframes,
 )
 from road2track_pipeline.health import all_ok, run_health_checks
 from road2track_pipeline.logging_setup import configure_logging
@@ -70,13 +71,23 @@ async def main_async() -> None:
         client,
         task_queue=TaskQueue.CPU.value,
         workflows=[ProcessProject],
-        activities=[ingest_session, fuse_sensors, detect_kind_and_trim],
+        activities=[
+            ingest_session,
+            fuse_sensors,
+            detect_kind_and_trim,
+            select_keyframes,
+        ],
     )
 
     logger.info(
         "cpu_worker registered, polling task queue",
         workflows=["ProcessProject"],
-        activities=["ingest_session", "fuse_sensors", "detect_kind_and_trim"],
+        activities=[
+            "ingest_session",
+            "fuse_sensors",
+            "detect_kind_and_trim",
+            "select_keyframes",
+        ],
     )
     await worker.run()
 

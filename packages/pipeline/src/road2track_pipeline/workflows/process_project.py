@@ -4,8 +4,10 @@ Au bootstrap (It. 0), enchaîne :
 1. `ingest_session` → SegmentRef (capture validée + uploadée + persistée)
 2. `fuse_sensors` → TrajectoryRef (trajectoire fusionnée ENU + uploadée)
 3. `detect_kind_and_trim` → DetectedTrackRef (circuit/spéciale + trim lead-in)
+4. `select_keyframes` → KeyframesRef (frames JPEG + manifest sur MinIO)
 
-Étapes amont/aval (`tile`, ProcessTile, etc.) viendront au fur et à mesure de l'It. 0.
+Étapes aval (`segment`, `train_gs`, `extract_mesh`, `bake_textures`) viendront
+au fur et à mesure (phase GPU).
 
 ⚠️ Imports : uniquement `road2track_core` (règle dure ADR-012). Les activités sont
 référencées par leur **nom string** pour ne pas tirer les adapters.
@@ -19,7 +21,9 @@ from pydantic import BaseModel
 from road2track_core.entities.refs import (
     DetectedTrackRef,
     IngestInput,
+    KeyframesRef,
     SegmentRef,
+    SelectKeyframesInput,
     TrajectoryRef,
 )
 from temporalio import workflow
@@ -32,6 +36,7 @@ class ProcessProjectResult(BaseModel):
     segment: SegmentRef
     trajectory: TrajectoryRef
     detected: DetectedTrackRef
+    keyframes: KeyframesRef
 
 
 @workflow.defn(name="ProcessProject")
@@ -63,4 +68,16 @@ class ProcessProject:
             retry_policy=retry,
         )
 
-        return ProcessProjectResult(segment=segment, trajectory=trajectory, detected=detected)
+        keyframes: KeyframesRef = await workflow.execute_activity(
+            "select_keyframes",
+            SelectKeyframesInput(segment=segment, detected=detected),
+            schedule_to_close_timeout=timedelta(minutes=30),
+            retry_policy=retry,
+        )
+
+        return ProcessProjectResult(
+            segment=segment,
+            trajectory=trajectory,
+            detected=detected,
+            keyframes=keyframes,
+        )

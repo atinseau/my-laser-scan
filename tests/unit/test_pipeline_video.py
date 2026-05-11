@@ -14,6 +14,7 @@ from road2track_core.errors import InvalidSegmentError
 from road2track_pipeline.activities._video import (
     _parse_fps,
     drop_audio_track,
+    extract_frame_at_time,
     find_video_file,
     probe_video,
 )
@@ -233,3 +234,62 @@ async def test_drop_audio_track_failure(tmp_path: Path) -> None:
         pytest.raises(InvalidSegmentError, match="ffmpeg a échoué"),
     ):
         await drop_audio_track(input_path, output_path)
+
+
+# ---------- extract_frame_at_time ----------
+
+
+@pytest.mark.asyncio
+async def test_extract_frame_at_time_returns_size(tmp_path: Path) -> None:
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"fake-video")
+    output = tmp_path / "frames" / "0000.jpg"
+
+    async def fake_exec(*_args: object, **_kwargs: object) -> AsyncMock:
+        proc = _make_proc(b"", b"", 0)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"jpeg-bytes")
+        return proc
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/ffmpeg"),
+        patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+    ):
+        size = await extract_frame_at_time(video, time_s=1.5, output_path=output)
+
+    assert size == len(b"jpeg-bytes")
+    assert output.exists()
+
+
+@pytest.mark.asyncio
+async def test_extract_frame_at_time_failure(tmp_path: Path) -> None:
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"x")
+    output = tmp_path / "frames" / "0000.jpg"
+
+    async def fake_exec(*_args: object, **_kwargs: object) -> AsyncMock:
+        return _make_proc(b"", b"invalid timestamp", 1)
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/ffmpeg"),
+        patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+        pytest.raises(InvalidSegmentError, match="frame extraction"),
+    ):
+        await extract_frame_at_time(video, time_s=2.0, output_path=output)
+
+
+@pytest.mark.asyncio
+async def test_extract_frame_at_time_missing_output(tmp_path: Path) -> None:
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"x")
+    output = tmp_path / "frames" / "0000.jpg"
+
+    async def fake_exec(*_args: object, **_kwargs: object) -> AsyncMock:
+        return _make_proc(b"", b"", 0)
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/ffmpeg"),
+        patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+        pytest.raises(InvalidSegmentError, match="n'a pas produit"),
+    ):
+        await extract_frame_at_time(video, time_s=2.0, output_path=output)

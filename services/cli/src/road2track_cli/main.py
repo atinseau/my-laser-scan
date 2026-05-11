@@ -77,6 +77,7 @@ def ingest(path: Path = _PATH_ARG, project_id: str | None = _PROJECT_ID_OPT) -> 
         seg = result.segment
         traj = result.trajectory
         detected = result.detected
+        keyframes = result.keyframes
         typer.echo("✅ traitement terminé")
         typer.echo(f"  project_id    : {seg.project_id}")
         typer.echo(f"  segment_id    : {seg.segment_id}")
@@ -112,6 +113,12 @@ def ingest(path: Path = _PATH_ARG, project_id: str | None = _PROJECT_ID_OPT) -> 
             f"trim lead-in={detected.n_samples_trimmed_at_start} poses)"
         )
         typer.echo(f"  trajectoire tronquée : {detected.trimmed_trajectory_uri}")
+        typer.echo(
+            f"  keyframes     : {keyframes.n_keyframes} JPEG "
+            f"(spacing={keyframes.min_spacing_m:.2f} m, "
+            f"arc {keyframes.arc_length_m:.0f} m)"
+        )
+        typer.echo(f"  manifest      : {keyframes.manifest_uri}")
 
     asyncio.run(run())
 

@@ -58,7 +58,7 @@ Exclu (pour les itérations suivantes) :
 - [x] Repo initialisé avec workspace `uv` complet.
 - [ ] `make up` démarre l'infra sur le Mac.
 - [ ] `docker compose -f docker-compose.gpu.yml up` démarre le `gpu_worker` sur le PC, qui se connecte au Temporal Mac via Tailscale.
-- [x] `uv run road2track ingest ./captures/balade_test` enregistre un projet et un segment via le workflow `ProcessProject`. Le workflow chaîne `ingest_session` (upload MinIO + persistance Postgres), `fuse_sensors` (fusion ARKit + GPS → trajectoire ENU géoréférencée, alignement Kabsch) puis `detect_kind_and_trim` (classification circuit/spéciale par loop closure + troncature du lead-in pour les circuits, pull-forward de l'It. 1 — cf. ADR-007/ADR-016).
+- [x] `uv run road2track ingest ./captures/balade_test` enregistre un projet et un segment via le workflow `ProcessProject`. Le workflow chaîne `ingest_session` (upload MinIO + persistance Postgres), `fuse_sensors` (fusion ARKit + GPS → trajectoire ENU géoréférencée, alignement Kabsch), `detect_kind_and_trim` (classification circuit/spéciale par loop closure + troncature du lead-in pour les circuits, pull-forward de l'It. 1 — cf. ADR-007/ADR-016) puis `select_keyframes` (sampling spatial tous les 0.5 m + extraction JPEG ffmpeg + upload MinIO).
 - [ ] `uv run road2track process <project-id>` lance le workflow complet jusqu'au mesh + textures (étapes downstream à implémenter).
 - [ ] Le résultat est ouvert dans Blender et **visuellement validé** par l'utilisateur.
 - [ ] **Validation technique du pattern session activities** Temporal (cf. [ADR-019](./08-decisions.md#adr-019--session-activities-pour-chaîner-le-pipeline-gpu-dune-tuile)). Si KO, fallback documenté dans un ADR de remplacement.

@@ -152,3 +152,45 @@ def find_video_file(local_dir: Path) -> Path:
     raise InvalidSegmentError(
         f"aucun fichier video.{{mp4,mov,m4v}} trouvé dans {record3d}"
     )
+
+
+async def extract_frame_at_time(
+    video_path: Path,
+    time_s: float,
+    output_path: Path,
+    *,
+    jpeg_quality: int = 2,
+) -> int:
+    """Extrait une frame JPEG du `video_path` au temps `time_s` (relatif au début vidéo).
+
+    Utilise `-ss <t>` en pré-input (seek rapide aux keyframes proches), puis
+    `-frames:v 1` pour ne prendre qu'une image. `jpeg_quality` (mjpeg `-q:v`) :
+    1 = meilleur, 31 = pire. Défaut 2 → qualité quasi-lossless.
+
+    Retourne la taille du JPEG produit (bytes).
+    """
+    _ensure_binary("ffmpeg")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg",
+        "-y",
+        "-ss", f"{max(time_s, 0.0):.3f}",
+        "-i", str(video_path),
+        "-frames:v", "1",
+        "-q:v", str(jpeg_quality),
+        str(output_path),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise InvalidSegmentError(
+            f"ffmpeg frame extraction a échoué sur {video_path} @ {time_s}s : "
+            f"{stderr.decode(errors='replace').strip()}"
+        )
+    if not output_path.is_file():
+        raise InvalidSegmentError(
+            f"ffmpeg n'a pas produit de frame au temps {time_s}s pour {video_path}"
+        )
+    return output_path.stat().st_size

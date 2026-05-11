@@ -125,3 +125,33 @@ class DetectedTrackRef(BaseModel):
         description="Distance euclidienne start↔end dans le repère ENU (m).",
     )
     n_samples_trimmed_at_start: int = Field(default=0, ge=0)
+
+
+class SelectKeyframesInput(BaseModel):
+    """Input de l'activité `select_keyframes`.
+
+    On a besoin du `SegmentRef` pour retrouver la vidéo brute (raw bucket) et
+    du `DetectedTrackRef` pour la trajectoire tronquée (intermediates bucket).
+    """
+
+    schema_version: Literal[1] = 1
+    segment: SegmentRef
+    detected: DetectedTrackRef
+
+
+class KeyframesRef(BaseModel):
+    """Référence aux keyframes sélectionnées (`select_keyframes`).
+
+    Cf. specs/04-pipeline-ml.md §3.1. Au POC, on stocke chaque keyframe en JPEG
+    sous `s3://intermediates/<project>/<segment>/keyframes/NNNN.jpg` et un
+    manifest `keyframes.json` à la racine.
+    """
+
+    schema_version: Literal[1] = 1
+    project_id: ProjectId
+    segment_id: SegmentId
+    manifest_uri: str
+    images_uri_prefix: str
+    n_keyframes: int = Field(ge=0)
+    min_spacing_m: float = Field(ge=0.0)
+    arc_length_m: float = Field(default=0.0, ge=0.0)
