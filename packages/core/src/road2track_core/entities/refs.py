@@ -230,12 +230,24 @@ class AcFilesRef(BaseModel):
 
 
 class FbxRef(BaseModel):
-    """Mesh FBX exporté pour ksEditor (It. 1)."""
+    """Mesh exporté avec UV unwrap pour ksEditor (It. 1).
+
+    Au POC B2, on produit **OBJ + MTL** avec UVs (xatlas) ; le FBX réel
+    nécessite Blender et arrive en B2b. `fbx_uri` est `None` tant que le
+    worker n'a pas Blender installé. `compile_kn5` doit alors faire la
+    conversion OBJ→FBX lui-même (ou échouer avec un message clair).
+    """
 
     schema_version: Literal[1] = 1
     project_id: ProjectId
     segment_id: SegmentId
-    fbx_uri: str
+    obj_uri: str = Field(description="OBJ avec coordonnées UV (toujours présent).")
+    mtl_uri: str = Field(description="MTL référençant l'atlas de texture.")
+    atlas_uri: str = Field(description="Atlas texture (PNG).")
+    fbx_uri: str | None = Field(
+        default=None,
+        description="FBX (compatibilité ksEditor). None tant que Blender pas dispo.",
+    )
     n_vertices: int = Field(default=0, ge=0)
     n_faces: int = Field(default=0, ge=0)
 
@@ -258,6 +270,30 @@ class Kn5Ref(BaseModel):
     segment_id: SegmentId
     kn5_uri: str
     bytes_size: int = Field(default=0, ge=0)
+    ks_editor_available: bool = Field(
+        default=False,
+        description="False si placeholder produit (sandbox/CI), True si ksEditor a tourné.",
+    )
+
+
+class Kn5Input(BaseModel):
+    """Input de l'activité `compile_kn5` — bundle FBX + AC files."""
+
+    schema_version: Literal[1] = 1
+    fbx: FbxRef
+    ac_files: AcFilesRef
+
+
+class PackageContentManagerInput(BaseModel):
+    """Input de l'activité `package_content_manager` (bundle complet AC)."""
+
+    schema_version: Literal[1] = 1
+    project_id: ProjectId
+    segment_id: SegmentId
+    track_name: str
+    ac_files: AcFilesRef
+    kn5: Kn5Ref
+    ai_line: AiLineRef
 
 
 class TrackPackageRef(BaseModel):

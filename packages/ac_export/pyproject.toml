@@ -10,8 +10,12 @@ dependencies = [
     "pillow>=10.0",
 ]
 
-# Blender bpy en extra car lourd et plateforme-spécifique.
+# Extras lourds : à installer sur le worker qui exécute l'export.
 [project.optional-dependencies]
+fbx = [
+    "xatlas>=0.0.9",
+    "trimesh>=4.0",
+]
 blender = [
     "bpy>=4.2",
 ]

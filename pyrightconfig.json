@@ -10,7 +10,9 @@
     "packages/ml/src/road2track_ml/gs/losses.py",
     "packages/ml/src/road2track_ml/gs/training.py",
     "packages/ml/src/road2track_ml/mesh/extraction.py",
-    "packages/ml/src/road2track_ml/texture/baking.py"
+    "packages/ml/src/road2track_ml/texture/baking.py",
+    "packages/ac_export/src/road2track_ac_export/uv_unwrap.py",
+    "packages/pipeline/src/road2track_pipeline/activities/generate_fbx.py"
   ],
   "pythonVersion": "3.12",
   "typeCheckingMode": "strict",

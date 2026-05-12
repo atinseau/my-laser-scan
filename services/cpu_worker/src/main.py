@@ -27,7 +27,10 @@ from road2track_pipeline.activities import (
     detect_kind_and_trim,
     fuse_sensors,
     generate_ac_files,
+    generate_ai_line,
+    generate_fbx,
     ingest_session,
+    package_content_manager,
     select_keyframes,
 )
 from road2track_pipeline.health import all_ok, run_health_checks
@@ -90,6 +93,9 @@ async def main_async() -> None:
             detect_kind_and_trim,
             select_keyframes,
             generate_ac_files,
+            generate_fbx,
+            generate_ai_line,
+            package_content_manager,
         ],
     )
 
@@ -108,6 +114,9 @@ async def main_async() -> None:
             "detect_kind_and_trim",
             "select_keyframes",
             "generate_ac_files",
+            "generate_fbx",
+            "generate_ai_line",
+            "package_content_manager",
         ],
     )
     await worker.run()

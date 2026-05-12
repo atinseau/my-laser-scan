@@ -183,9 +183,9 @@ Exclu :
 
 ### Livrables
 
-- [ ] Tous les workflows / activités décrits dans `04-pipeline-ml.md` pour le mono-tuile.
-- [ ] Templates Jinja des fichiers AC.
-- [ ] Worker `windows-tools` (natif Windows sur le PC) qui compile le KN5 via `ksEditor.exe`.
+- [x] Workflow `ExportAssettoCorsa` câblant 5 activités (`generate_ac_files`, `generate_fbx`, `generate_ai_line`, `compile_kn5`, `package_content_manager`) — cf. ADR-023.
+- [x] Templates Jinja des fichiers AC (`surfaces.ini`, `models.ini`, `ui_track.json`).
+- [x] Worker `windows-tools` (service scaffold + activity `compile_kn5` avec fallback placeholder si `ksEditor.exe` absent — testable sans Windows).
 - [ ] 🧪 **Prototype `wine-worker`** (image Docker Linux + Wine + ksEditor) en parallèle, à valider sur 5 KN5 de référence avant la fin de l'itération. Si validé → permet de retirer la dépendance PC en V2 (cf. QO-007).
 - [ ] **Validation empirique de l'orientation des axes** (Y-up ou Z-up) pour AC, fixée définitivement (cf. `06 §1`).
 - [ ] **Commande `make backup-outputs`** opérationnelle (copie incrémentale datée des outputs MinIO vers un dossier local).
@@ -194,6 +194,24 @@ Exclu :
 - [ ] Documentation utilisateur dans `README.md` mise à jour.
 - [ ] Premier circuit installé via Content Manager et rouler dedans.
 - [ ] Production de `specs/reviews/1-end-of-iteration.md` à la fin.
+
+### Statut détaillé It. 1 au handoff (snapshot 2026-05-12)
+
+**Activités câblées** (workflow `ExportAssettoCorsa`) :
+
+| Activité | Module | Statut |
+|---|---|---|
+| `generate_ac_files` | `pipeline/activities/generate_ac_files.py` + `ac_export/ac_files.py` | ✅ Jinja réel + tests |
+| `generate_fbx` | `pipeline/activities/generate_fbx.py` + `ac_export/uv_unwrap.py` + `obj_io.py` | ✅ xatlas lazy + tests (OBJ + UV + MTL ; FBX réel = B2b via Blender) |
+| `generate_ai_line` | `pipeline/activities/generate_ai_line.py` + `ac_export/ai_line.py` | ✅ `fast_lane.ai` binaire simplifié (pos + arc length, extras à 0) |
+| `compile_kn5` | `pipeline/activities/compile_kn5.py` (queue `windows-tools`) | ✅ fonctionnel avec ksEditor SI installé, sinon `.kn5` placeholder zip |
+| `package_content_manager` | `pipeline/activities/package_content_manager.py` + `ac_export/packaging.py` | ✅ zip CM layout `content/tracks/<id>/...` + miniature placeholder |
+
+**Limitations POC It. 1 à valider sur PC Windows** :
+- FBX réel (`fbx_uri = None` au B1/B2). En B2b il faut installer Blender et faire la conversion OBJ→FBX dans `generate_fbx`. ksEditor lit le FBX, donc bloquant pour un KN5 réel.
+- `fast_lane.ai` extras à 0 (pas de side bounds) → l'AI suit la trajectoire mais peut sortir du circuit. Acceptable mono-joueur.
+- Atlas texture toujours placeholder gris (cf. limites POC It. 0). À rebake en UV space pour des textures réelles.
+- Miniature `ui/preview.png` placeholder (PIL avec texte). Vraie capture screenshot AC à venir.
 
 ### Critères go/no-go
 

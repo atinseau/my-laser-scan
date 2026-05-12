@@ -256,15 +256,19 @@ def export(
         typer.echo(f"  surfaces.ini    : {result.ac_files.surfaces_ini_uri}")
         typer.echo(f"  models.ini      : {result.ac_files.models_ini_uri}")
         typer.echo(f"  ui_track.json   : {result.ac_files.ui_track_json_uri}")
-        if result.track_package is not None:
-            typer.echo(
-                f"  zip CM         : {result.track_package.package_uri} "
-                f"({result.track_package.bytes_size} bytes)"
-            )
-        else:
-            typer.echo(
-                "  zip CM         : pas encore (FBX + ksEditor + packaging à venir)"
-            )
+        typer.echo(
+            f"  mesh OBJ        : {result.fbx.obj_uri} "
+            f"({result.fbx.n_vertices} v / {result.fbx.n_faces} f)"
+        )
+        typer.echo(f"  fast_lane.ai    : {result.ai_line.fast_lane_uri}")
+        typer.echo(
+            f"  track.kn5       : {result.kn5.kn5_uri} "
+            f"({'ksEditor' if result.kn5.ks_editor_available else 'placeholder'})"
+        )
+        typer.echo(
+            f"  zip CM          : {result.track_package.package_uri} "
+            f"({result.track_package.bytes_size} bytes)"
+        )
 
     asyncio.run(run())
 
