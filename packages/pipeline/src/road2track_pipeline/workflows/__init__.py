@@ -5,6 +5,16 @@ signatures (types) d'activités. Aucun import d'adapter (cf. specs/02-architectu
 ADR-012, lint CI scripts/check_workflow_imports.py).
 """
 
+from road2track_pipeline.workflows.gpu_stages import (
+    RunBakeTextures,
+    RunExtractMesh,
+    RunTrainGs,
+)
 from road2track_pipeline.workflows.process_project import ProcessProject
 
-__all__ = ["ProcessProject"]
+__all__ = [
+    "ProcessProject",
+    "RunBakeTextures",
+    "RunExtractMesh",
+    "RunTrainGs",
+]

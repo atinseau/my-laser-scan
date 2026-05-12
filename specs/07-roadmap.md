@@ -86,8 +86,11 @@ Exclu (pour les itérations suivantes) :
 | `extract_mesh` | `pipeline/activities/extract_mesh.py` + `ml/mesh/extraction.py` | ✅ **à l'aveugle** (Poisson Open3D + decimation) | ❌ |
 | `bake_textures` | `pipeline/activities/bake_textures.py` + `ml/texture/baking.py` | ✅ **à l'aveugle** (projection multi-vue vertex colors) | ❌ |
 
-**Workflow `ProcessProject`** chaîne **`ingest_session → fuse_sensors → detect_kind_and_trim → select_keyframes`** uniquement.
-Les trois activités GPU (`train_gs`, `extract_mesh`, `bake_textures`) sont **registrées** sur le `gpu_worker` (queue `gpu`) mais **non chaînées** dans le workflow. Décision : on attend une validation manuelle de chaque étape avant de chaîner, pour éviter de tout casser au premier run.
+**Workflow `ProcessProject`** chaîne désormais **les 7 activités** : `ingest_session → fuse_sensors → detect_kind_and_trim → select_keyframes → train_gs → extract_mesh → bake_textures`. Endpoint stable : `TexturedMeshRef` (mesh + atlas + materials), point d'arrêt naturel du POC visualisable dans Blender.
+
+Trois workflows debug `RunTrainGs` / `RunExtractMesh` / `RunBakeTextures` permettent d'invoquer **une seule** activité GPU à la fois pour débugger pas-à-pas (cf. `tools/run_gpu_pipeline.py`). Supprimables une fois la phase GPU validée.
+
+Conformité ADR-023 : ce workflow restera autosuffisant. L'export AC (It. 1) sera un workflow **séparé** consommant un `TexturedMeshRef`.
 
 **Limitations POC explicitement assumées** (à éventuellement adresser en It. 0 ou reporter en It. 1) :
 
@@ -112,11 +115,14 @@ Les trois activités GPU (`train_gs`, `extract_mesh`, `bake_textures`) sont **re
 3. PC Windows : décommenter `RUN uv sync --frozen --extra gs --extra mesh ...` dans `services/gpu_worker/Dockerfile`, puis `docker compose -f docker-compose.gpu.yml build` (≈30 min nvcc) + `up -d`. Suivre [`docs/setup-gpu-windows.md`](../docs/setup-gpu-windows.md).
 4. Capture iPhone Record3D Pro + Sensor Logger sur ~200 m boucle fermée.
 5. Mac : `uv run road2track ingest ./captures/balade_test` → exécute jusqu'à `select_keyframes`.
-6. **Étape manuelle** : déclencher `train_gs` → `extract_mesh` → `bake_textures` une par une (Temporal UI sur http://127.0.0.1:8233 OU script `tools/run_gpu_pipeline.py` à écrire). Permet de débugger chaque étape isolément.
-7. Télécharger `intermediates/<p>/<s>/textured/mesh.obj` depuis MinIO, ouvrir dans Blender, valider visuellement.
+6. **(Optionnel, debug)** Si une activité GPU casse, relancer juste celle-là avec `uv run python tools/run_gpu_pipeline.py <project_id> <segment_id> --from train_gs|extract_mesh|bake_textures`.
+7. Si tout passe : `road2track ingest` exécute l'entier `ProcessProject` jusqu'à `TexturedMeshRef`.
+8. Télécharger `intermediates/<p>/<s>/textured/mesh.obj` depuis MinIO, ouvrir dans Blender, valider visuellement.
 
 **Pour clore l'It. 0** :
-- [ ] Câbler `train_gs → extract_mesh → bake_textures` dans `ProcessProject` (≈30 lignes).
+- [x] Câbler `train_gs → extract_mesh → bake_textures` dans `ProcessProject`.
+- [x] Outil `tools/run_gpu_pipeline.py` pour débugger pas-à-pas.
+- [x] ADR-023 pour formaliser la séparation export par target.
 - [ ] Créer `tools/run_gpu_pipeline.py` ou `road2track process <id> --from select_keyframes` pour faciliter le re-run.
 - [ ] Z-buffer occlusion dans `bake_textures` si la qualité visuelle est insuffisante (optionnel).
 - [ ] Mesures empiriques (temps GS 30k iter, PSNR, RMSE Kabsch sur vrai GPS) à reporter dans `specs/reviews/0-end-of-iteration.md`.

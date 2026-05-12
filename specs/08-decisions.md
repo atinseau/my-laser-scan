@@ -773,6 +773,79 @@ Profiter du fait que pendant qu'une tuile est en `train_gs` (GPU), une autre peu
 
 ---
 
+## ADR-023 — Séparation export par target via workflows distincts
+
+**Statut** : accepté
+**Date** : 2026-05-12
+**Origine** : Question utilisateur fin It. 0 ("Comment garder l'It. 0 testable
+isolément quand l'It. 1 s'y plugue dessus ?")
+
+### Contexte
+
+À la fin de l'It. 0, le workflow `ProcessProject` produit un `TexturedMeshRef`
+(mesh.obj + atlas.png + materials.json) visualisable dans Blender. L'It. 1
+doit ajouter l'export Assetto Corsa : `.fbx`, `surfaces.ini`, `models.ini`,
+`fast_lane.ai`, `.kn5`, packaging Content Manager.
+
+Deux modèles possibles pour brancher l'export :
+
+| Option | Description |
+|---|---|
+| **A. Extension du workflow `ProcessProject`** | Ajouter les activités d'export à la fin du même workflow, conditionnellement via un flag `--target assetto-corsa`. |
+| **B. Workflow séparé `ExportAssettoCorsa`** | Workflow distinct qui consomme un `TexturedMeshRef` et produit un `TrackPackageRef`. Déclenché par une commande CLI séparée `road2track export`. |
+
+Le projet vise aussi des targets futurs (rFactor, BeamNG, cf. CH-MUL-1 du
+cahier des charges), il faut un modèle qui passe à l'échelle.
+
+### Décision
+
+**Option B retenue : un workflow d'export distinct par target.**
+
+- `ProcessProject` reste **autosuffisant** et **stable** : son endpoint est
+  `TexturedMeshRef`, c'est le point d'arrêt naturel de l'It. 0 (POC qualité
+  texturale). Aucune dépendance vers les workflows d'export.
+- `ExportAssettoCorsa` (It. 1) consomme un `TexturedMeshRef` et produit un
+  `TrackPackageRef` (zip CM). Workflow indépendant, déclenché par
+  `road2track export <project_id> --target assetto-corsa`.
+- Targets futurs : `ExportRFactor2`, `ExportBeamNG`, etc. Chacun = nouveau
+  workflow + nouveau target dans la CLI.
+- Les **refs Pydantic versionnées** (`schema_version: int`, frozen) sont le
+  contrat d'interface entre `ProcessProject` et tout workflow d'export.
+
+### Conséquences
+
+**Positives** :
+
+- It. 0 reste testable en isolation : on fait tourner `road2track ingest`,
+  on inspecte `TexturedMeshRef` dans Blender, validation visuelle de la
+  qualité gsplat indépendamment de tout export AC.
+- It. 1 est un **ajout** sans risque de régression sur It. 0 — la CI vérifie
+  que les tests E2E qui s'arrêtent à `TexturedMeshRef` restent verts.
+- Multi-target naturel : chaque jeu cible est un workflow isolé, code
+  spécifique au format dans son package (`ac_export`, futur `rfactor_export`).
+- Lint architecture déjà en place
+  (`scripts/check_workflow_imports.py`) garantit l'étanchéité.
+- Reprise / re-run partiel facile via Temporal (relancer juste
+  `ExportAssettoCorsa` sans relancer le GS de 30k iter).
+
+**Négatives** :
+
+- Léger duplication du boilerplate d'orchestration entre workflows
+  (téléchargement initial, retry, etc.) — acceptable pour la clarté
+  fonctionnelle.
+
+### Garde-fous
+
+- Ne **jamais** modifier la signature de `TexturedMeshRef` sans bumper son
+  `schema_version` et adapter tous les workflows consommateurs.
+- Tests E2E It. 0 doivent rester verts quoi qu'il arrive en It. 1+. CI gate
+  bloquant.
+- Pour les workflows debug `RunTrainGs`/`RunExtractMesh`/`RunBakeTextures`
+  (cf. `tools/run_gpu_pipeline.py`) — non comptés comme workflows
+  applicatifs, supprimables une fois la phase GPU validée.
+
+---
+
 ## Index
 
 | ADR | Titre | Statut | Origine |
@@ -799,6 +872,7 @@ Profiter du fait que pendant qu'une tuile est en `train_gs` (GPU), une autre peu
 | 020 | Stratégie de cache des modèles ML (mix pré-bake + MinIO) | accepté | Review 5 |
 | 021 | Stockage des secrets via `.env` au MVP | accepté | Review 5 |
 | 022 | Stratégie d'optimisation de coût sans perte de qualité | accepté | Analyse coûts |
+| 023 | Séparation export par target via workflows distincts | accepté | Fin It. 0 |
 
 ---
 

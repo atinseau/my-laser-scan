@@ -78,6 +78,9 @@ def ingest(path: Path = _PATH_ARG, project_id: str | None = _PROJECT_ID_OPT) -> 
         traj = result.trajectory
         detected = result.detected
         keyframes = result.keyframes
+        scene = result.scene
+        mesh = result.mesh
+        textured = result.textured_mesh
         typer.echo("✅ traitement terminé")
         typer.echo(f"  project_id    : {seg.project_id}")
         typer.echo(f"  segment_id    : {seg.segment_id}")
@@ -119,6 +122,21 @@ def ingest(path: Path = _PATH_ARG, project_id: str | None = _PROJECT_ID_OPT) -> 
             f"arc {keyframes.arc_length_m:.0f} m)"
         )
         typer.echo(f"  manifest      : {keyframes.manifest_uri}")
+        typer.echo(
+            f"  scene GS      : {scene.n_gaussians} gaussiennes, "
+            f"{scene.n_iterations} iter"
+        )
+        typer.echo(f"  scene uri     : {scene.scene_uri}")
+        typer.echo(
+            f"  mesh          : {mesh.n_vertices} vertices / {mesh.n_faces} faces"
+        )
+        typer.echo(f"  mesh uri      : {mesh.mesh_uri}")
+        typer.echo(
+            f"  textured      : {textured.n_textured_vertices} vertex colorés "
+            f"({textured.n_unseen_vertices} non vus)"
+        )
+        typer.echo(f"  textured uri  : {textured.mesh_uri}")
+        typer.echo("✅ POC complet — mesh texturé prêt pour Blender")
 
     asyncio.run(run())
 

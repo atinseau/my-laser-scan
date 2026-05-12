@@ -31,7 +31,12 @@ from road2track_pipeline.activities import (
 )
 from road2track_pipeline.health import all_ok, run_health_checks
 from road2track_pipeline.logging_setup import configure_logging
-from road2track_pipeline.workflows import ProcessProject
+from road2track_pipeline.workflows import (
+    ProcessProject,
+    RunBakeTextures,
+    RunExtractMesh,
+    RunTrainGs,
+)
 from temporalio.client import Client
 from temporalio.worker import Worker
 
@@ -70,7 +75,7 @@ async def main_async() -> None:
     worker = Worker(
         client,
         task_queue=TaskQueue.CPU.value,
-        workflows=[ProcessProject],
+        workflows=[ProcessProject, RunTrainGs, RunExtractMesh, RunBakeTextures],
         activities=[
             ingest_session,
             fuse_sensors,
@@ -81,7 +86,12 @@ async def main_async() -> None:
 
     logger.info(
         "cpu_worker registered, polling task queue",
-        workflows=["ProcessProject"],
+        workflows=[
+            "ProcessProject",
+            "RunTrainGs",
+            "RunExtractMesh",
+            "RunBakeTextures",
+        ],
         activities=[
             "ingest_session",
             "fuse_sensors",
