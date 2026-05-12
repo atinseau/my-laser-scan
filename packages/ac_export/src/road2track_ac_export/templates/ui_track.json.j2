@@ -1,0 +1,15 @@
+{
+  "name": "{{ track_name }}",
+  "description": "{{ description }}",
+  "tags": ["road2track", "{{ track_kind }}"],
+  "geotags": [],
+  "country": "{{ country }}",
+  "city": "{{ city | default("") }}",
+  "length": "{{ length_m | round | int }} m",
+  "width": "{{ width_m | default(8.0) }} m",
+  "pitboxes": "{{ pitboxes | default(1) }}",
+  "run": "{{ run | default("Counter-clockwise" if track_kind == "circuit" else "Point to point") }}",
+  "author": "{{ track_author }}",
+  "version": "{{ version | default("0.1") }}",
+  "year": {{ year | default(2026) }}
+}

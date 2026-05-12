@@ -213,3 +213,83 @@ class BakeTexturesInput(BaseModel):
     schema_version: Literal[1] = 1
     mesh: MeshRef
     keyframes: KeyframesRef
+
+
+class AcFilesRef(BaseModel):
+    """Fichiers `.ini` + `ui_track.json` générés pour Assetto Corsa (It. 1).
+
+    Cf. specs/04-pipeline-ml.md §3.5+ (export AC) et ADR-023 (composition workflows).
+    """
+
+    schema_version: Literal[1] = 1
+    project_id: ProjectId
+    segment_id: SegmentId
+    surfaces_ini_uri: str
+    models_ini_uri: str
+    ui_track_json_uri: str
+
+
+class FbxRef(BaseModel):
+    """Mesh FBX exporté pour ksEditor (It. 1)."""
+
+    schema_version: Literal[1] = 1
+    project_id: ProjectId
+    segment_id: SegmentId
+    fbx_uri: str
+    n_vertices: int = Field(default=0, ge=0)
+    n_faces: int = Field(default=0, ge=0)
+
+
+class AiLineRef(BaseModel):
+    """`fast_lane.ai` généré depuis la trajectoire ENU (It. 1)."""
+
+    schema_version: Literal[1] = 1
+    project_id: ProjectId
+    segment_id: SegmentId
+    fast_lane_uri: str
+    n_waypoints: int = Field(default=0, ge=0)
+
+
+class Kn5Ref(BaseModel):
+    """Binaire `.kn5` compilé via ksEditor sur Windows (It. 1)."""
+
+    schema_version: Literal[1] = 1
+    project_id: ProjectId
+    segment_id: SegmentId
+    kn5_uri: str
+    bytes_size: int = Field(default=0, ge=0)
+
+
+class TrackPackageRef(BaseModel):
+    """Zip Content Manager final installable (It. 1).
+
+    Endpoint stable du workflow `ExportAssettoCorsa` (cf. ADR-023).
+    """
+
+    schema_version: Literal[1] = 1
+    project_id: ProjectId
+    segment_id: SegmentId
+    package_uri: str
+    track_name: str
+    bytes_size: int = Field(default=0, ge=0)
+
+
+class ExportAcInput(BaseModel):
+    """Input du workflow `ExportAssettoCorsa`.
+
+    Bundle des refs produits par `ProcessProject` + métadonnées de track
+    (nom affiché, country, etc.). On laisse le projet_id/segment_id remonter
+    explicitement pour ne pas forcer la lecture depuis Postgres.
+    """
+
+    schema_version: Literal[1] = 1
+    project_id: ProjectId
+    segment_id: SegmentId
+    textured_mesh: TexturedMeshRef
+    detected: DetectedTrackRef
+    track_name: str = Field(description="Nom affiché dans Content Manager.")
+    track_author: str = Field(default="road2track", description="Auteur du circuit.")
+    country: str = Field(default="France", description="Pays affiché par CM.")
+    description: str = Field(
+        default="", description="Description longue dans `ui_track.json`."
+    )

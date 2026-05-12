@@ -1,0 +1,32 @@
+; surfaces.ini — généré par road2track ({{ generated_at }})
+; Cf. https://www.assettocorsa.net/forum/index.php?threads/surfaces-ini.46329/
+
+[SURFACE_0]
+KEY=ROAD
+FRICTION={{ road_friction | default(0.99) }}
+DAMPING=0
+WAV={{ road_wav | default("road.wav") }}
+WAV_PITCH=1.0
+FF_EFFECT=
+DIRT_ADDITIVE=0
+IS_VALID_TRACK=1
+BLACK_FLAG_TIME=0
+SIN_HEIGHT=0
+SIN_LENGTH=0
+VIBRATION_GAIN=0
+VIBRATION_LENGTH=0
+
+[SURFACE_1]
+KEY=GRASS
+FRICTION={{ grass_friction | default(0.6) }}
+DAMPING=10
+WAV={{ grass_wav | default("grass.wav") }}
+WAV_PITCH=1.0
+FF_EFFECT=
+DIRT_ADDITIVE=0.10
+IS_VALID_TRACK=0
+BLACK_FLAG_TIME={{ grass_black_flag_time | default(5) }}
+SIN_HEIGHT=0
+SIN_LENGTH=0
+VIBRATION_GAIN=0.05
+VIBRATION_LENGTH=2.0

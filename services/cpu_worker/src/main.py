@@ -26,12 +26,14 @@ from road2track_core.queues import TaskQueue
 from road2track_pipeline.activities import (
     detect_kind_and_trim,
     fuse_sensors,
+    generate_ac_files,
     ingest_session,
     select_keyframes,
 )
 from road2track_pipeline.health import all_ok, run_health_checks
 from road2track_pipeline.logging_setup import configure_logging
 from road2track_pipeline.workflows import (
+    ExportAssettoCorsa,
     ProcessProject,
     RunBakeTextures,
     RunExtractMesh,
@@ -75,12 +77,19 @@ async def main_async() -> None:
     worker = Worker(
         client,
         task_queue=TaskQueue.CPU.value,
-        workflows=[ProcessProject, RunTrainGs, RunExtractMesh, RunBakeTextures],
+        workflows=[
+            ProcessProject,
+            ExportAssettoCorsa,
+            RunTrainGs,
+            RunExtractMesh,
+            RunBakeTextures,
+        ],
         activities=[
             ingest_session,
             fuse_sensors,
             detect_kind_and_trim,
             select_keyframes,
+            generate_ac_files,
         ],
     )
 
@@ -88,6 +97,7 @@ async def main_async() -> None:
         "cpu_worker registered, polling task queue",
         workflows=[
             "ProcessProject",
+            "ExportAssettoCorsa",
             "RunTrainGs",
             "RunExtractMesh",
             "RunBakeTextures",
@@ -97,6 +107,7 @@ async def main_async() -> None:
             "fuse_sensors",
             "detect_kind_and_trim",
             "select_keyframes",
+            "generate_ac_files",
         ],
     )
     await worker.run()

@@ -1,10 +1,9 @@
 """CLI Road2Track — Typer.
 
-Commandes prévues (cf. specs/05-infrastructure.md §8) :
+Commandes (cf. specs/05-infrastructure.md §8) :
 
-    road2track ingest <path> --project-id <id>
-    road2track process <project_id>     (à venir)
-    road2track export <project_id>      (à venir)
+    road2track ingest <path> [--project-id <id>]
+    road2track export <project_id> [--target assetto-corsa] [--track-name ...]
     road2track gpu list / spawn / shutdown   (à venir)
 """
 
@@ -17,10 +16,22 @@ from typing import cast
 import structlog
 import typer
 from road2track_core.config import Settings
-from road2track_core.entities.refs import IngestInput
+from road2track_core.entities.refs import (
+    DetectedTrackRef,
+    ExportAcInput,
+    IngestInput,
+    TexturedMeshRef,
+)
+from road2track_core.entities.track_kind import TrackKind
 from road2track_core.ids import new_project_id
-from road2track_pipeline.client import start_process_project
+from road2track_pipeline.client import (
+    start_export_assetto_corsa,
+    start_process_project,
+)
 from road2track_pipeline.logging_setup import configure_logging
+from road2track_pipeline.workflows.export_assetto_corsa import (
+    ExportAssettoCorsaResult,
+)
 from road2track_pipeline.workflows.process_project import ProcessProjectResult
 
 app = typer.Typer(
@@ -137,6 +148,123 @@ def ingest(path: Path = _PATH_ARG, project_id: str | None = _PROJECT_ID_OPT) -> 
         )
         typer.echo(f"  textured uri  : {textured.mesh_uri}")
         typer.echo("✅ POC complet — mesh texturé prêt pour Blender")
+
+    asyncio.run(run())
+
+
+# ----------------------------------------------------------------------- export
+
+_EXPORT_PROJECT_ID_ARG: str = typer.Argument(..., help="ID du projet (ulid).")
+_EXPORT_SEGMENT_ID_ARG: str = typer.Argument(..., help="ID du segment (ulid).")
+_EXPORT_TARGET_OPT: str = typer.Option(
+    "assetto-corsa", "--target", help="Cible : assetto-corsa (autres targets V2)."
+)
+_EXPORT_TRACK_NAME_OPT: str = typer.Option(
+    "Road2Track Custom", "--track-name", help="Nom affiché dans Content Manager."
+)
+_EXPORT_AUTHOR_OPT: str = typer.Option(
+    "road2track", "--track-author", help="Auteur du circuit."
+)
+_EXPORT_COUNTRY_OPT: str = typer.Option(
+    "France", "--country", help="Pays affiché par CM."
+)
+_EXPORT_DESCRIPTION_OPT: str = typer.Option(
+    "", "--description", help="Description longue."
+)
+_EXPORT_KIND_OPT: str = typer.Option(
+    "circuit", "--kind", help="circuit | speciale (récupéré de detect_kind_and_trim)."
+)
+_EXPORT_ARC_LENGTH_OPT: float = typer.Option(
+    0.0, "--arc-length-m", help="Longueur de la trajectoire (m)."
+)
+
+
+@app.command()
+def export(
+    project_id: str = _EXPORT_PROJECT_ID_ARG,
+    segment_id: str = _EXPORT_SEGMENT_ID_ARG,
+    target: str = _EXPORT_TARGET_OPT,
+    track_name: str = _EXPORT_TRACK_NAME_OPT,
+    track_author: str = _EXPORT_AUTHOR_OPT,
+    country: str = _EXPORT_COUNTRY_OPT,
+    description: str = _EXPORT_DESCRIPTION_OPT,
+    kind: str = _EXPORT_KIND_OPT,
+    arc_length_m: float = _EXPORT_ARC_LENGTH_OPT,
+) -> None:
+    """Export d'un projet vers un format de jeu de simulation (POC : Assetto Corsa).
+
+    Au B1, on passe les refs en arguments (textured_mesh + detected). Une
+    prochaine itération lira automatiquement depuis Postgres via project_id.
+    """
+    if target != "assetto-corsa":
+        typer.echo(f"❌ target '{target}' non supporté. Utilise 'assetto-corsa'.", err=True)
+        raise typer.Exit(code=2)
+    if kind not in ("circuit", "speciale"):
+        typer.echo(f"❌ --kind doit être circuit | speciale (got '{kind}')", err=True)
+        raise typer.Exit(code=2)
+
+    settings = Settings()
+    configure_logging(level=settings.log_level, worker_name="cli")
+    logger = structlog.get_logger("cli.export")
+
+    bucket = settings.minio_bucket_intermediates
+    out_bucket = settings.minio_bucket_outputs
+    prefix = f"{project_id}/{segment_id}"
+
+    textured_ref = TexturedMeshRef(
+        project_id=project_id,
+        segment_id=segment_id,
+        mesh_uri=f"s3://{bucket}/{prefix}/textured/mesh.obj",
+        texture_atlas_uri=f"s3://{bucket}/{prefix}/textured/atlas.png",
+        material_uri=f"s3://{bucket}/{prefix}/textured/materials.json",
+    )
+    detected_ref = DetectedTrackRef(
+        project_id=project_id,
+        segment_id=segment_id,
+        track_kind=TrackKind(kind),
+        trimmed_trajectory_uri=f"s3://{bucket}/{prefix}/trajectory_trimmed.json",
+        n_samples=0,
+        arc_length_m=arc_length_m,
+        loop_closure_distance_m=0.0,
+    )
+    payload = ExportAcInput(
+        project_id=project_id,
+        segment_id=segment_id,
+        textured_mesh=textured_ref,
+        detected=detected_ref,
+        track_name=track_name,
+        track_author=track_author,
+        country=country,
+        description=description,
+    )
+    workflow_id = f"export-ac-{project_id}-{segment_id}"
+
+    logger.info(
+        "starting ExportAssettoCorsa workflow",
+        project_id=project_id,
+        segment_id=segment_id,
+        workflow_id=workflow_id,
+        track_name=track_name,
+    )
+
+    async def run() -> None:
+        handle = await start_export_assetto_corsa(payload, workflow_id=workflow_id)
+        typer.echo(f"workflow démarré : {handle.id} (run_id: {handle.result_run_id})")
+        result = cast(ExportAssettoCorsaResult, await handle.result())
+        typer.echo("✅ export AC done")
+        typer.echo(f"  bucket sortie   : {out_bucket}")
+        typer.echo(f"  surfaces.ini    : {result.ac_files.surfaces_ini_uri}")
+        typer.echo(f"  models.ini      : {result.ac_files.models_ini_uri}")
+        typer.echo(f"  ui_track.json   : {result.ac_files.ui_track_json_uri}")
+        if result.track_package is not None:
+            typer.echo(
+                f"  zip CM         : {result.track_package.package_uri} "
+                f"({result.track_package.bytes_size} bytes)"
+            )
+        else:
+            typer.echo(
+                "  zip CM         : pas encore (FBX + ksEditor + packaging à venir)"
+            )
 
     asyncio.run(run())
 
