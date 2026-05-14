@@ -137,35 +137,65 @@ my-laser-scan/
 
 ## Démarrage rapide
 
-> Les commandes ci-dessous deviendront fonctionnelles au fil des itérations. Voir [`specs/07-roadmap.md`](./specs/07-roadmap.md) pour le statut.
+> Snapshot 2026-05-12 : code complet pour It. 0 + It. 1, **non validé sur hardware**.
+> Voir [`specs/07-roadmap.md` §Statut détaillé au handoff](./specs/07-roadmap.md) pour ce qui marche vraiment.
 
 ```bash
 # 1. Cloner le repo et installer les dépendances
 git clone <url> my-laser-scan
 cd my-laser-scan
-uv sync                                # installe tous les packages workspace
+uv sync --all-packages                 # installe tous les packages workspace
 
 # 2. Démarrer l'infrastructure locale (sur le Mac)
 make up                                # docker-compose : Temporal, Postgres, MinIO, NATS
 make migrate                           # applique les migrations Alembic
 
-# 3. (Sur le PC Windows) Démarrer le worker GPU
+# 3. Démarrer le cpu_worker en process direct
+make worker-cpu                        # poll la queue `cpu`
+
+# 4. (Sur le PC Windows) Démarrer le worker GPU
+#    Voir docs/setup-gpu-windows.md pour le détail (Docker Desktop + WSL2
+#    + NVIDIA Container Toolkit + Tailscale + activation extras gs/mesh).
 docker compose -f docker-compose.gpu.yml up -d
+docker compose -f docker-compose.gpu.yml logs -f gpu-worker
 
-# 4. Vérifier que tout est connecté
-uv run road2track gpu list             # doit lister le PC en ligne
-open http://localhost:8080             # Temporal Web UI
+# 5. (Optionnel) Sur Windows aussi : worker windows-tools pour ksEditor
+uv run python -m services.windows_tools     # natif Windows + KSEDITOR_PATH dans .env
 
-# 5. Ingestion d'une capture
-uv run road2track project create "Mon premier circuit"
+# 6. Capture iPhone (Record3D Pro + Sensor Logger) ~200 m boucle fermée
+#    Layout produit : record3d/{video.mp4,poses.json,metadata.json},
+#    sensor_logger/{imu.json,gps.json}
+
+# 7. Ingestion + Gaussian Splatting + mesh + textures (It. 0 = ProcessProject)
 uv run road2track ingest ./captures/balade_test/
+#    → enchaîne : ingest_session → fuse_sensors → detect_kind_and_trim
+#    → select_keyframes → train_gs → extract_mesh → bake_textures
+#    → endpoint stable : TexturedMeshRef (mesh.obj + atlas + materials)
 
-# 6. Lancer le pipeline
-uv run road2track process <project-id>
+# 8. Debug pas-à-pas si une activité GPU casse (premier run blind)
+uv run python tools/run_gpu_pipeline.py <project_id> <segment_id> --from train_gs
+uv run python tools/run_gpu_pipeline.py <project_id> <segment_id> --from extract_mesh
+uv run python tools/run_gpu_pipeline.py <project_id> <segment_id> --from bake_textures
 
-# 7. Récupérer le résultat
-uv run road2track export <project-id> --output ~/Downloads/
+# 9. Export Assetto Corsa (It. 1 = ExportAssettoCorsa)
+uv run road2track export <project_id> <segment_id> \
+    --target assetto-corsa \
+    --track-name "Mon premier circuit" \
+    --kind circuit \
+    --arc-length-m 200
+#    → enchaîne : generate_ac_files → generate_fbx (UV unwrap) →
+#       generate_ai_line → compile_kn5 (sur windows-tools) →
+#       package_content_manager → zip CM installable
+
+# 10. Récupérer le zip CM final depuis MinIO
+mc cp minio/outputs/<project_id>/<segment_id>/ac/<track_id>.zip ~/Downloads/
+# Glisser-déposer dans Content Manager pour installer.
 ```
+
+> ⚠️ Les commandes 7/8/9 nécessitent que le `gpu_worker` (et `windows_tools`
+> pour KN5) tournent et soient connectés à Temporal. Le `cpu_worker` du Mac
+> orchestre. Voir [`docs/setup-gpu-windows.md`](./docs/setup-gpu-windows.md) et
+> [`docs/setup-gpu-cloud.md`](./docs/setup-gpu-cloud.md).
 
 ---
 

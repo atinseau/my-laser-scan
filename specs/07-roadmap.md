@@ -190,8 +190,8 @@ Exclu :
 - [ ] **Validation empirique de l'orientation des axes** (Y-up ou Z-up) pour AC, fixée définitivement (cf. `06 §1`).
 - [ ] **Commande `make backup-outputs`** opérationnelle (copie incrémentale datée des outputs MinIO vers un dossier local).
 - [ ] **Spot pricing + checkpointing GS** opérationnel (cf. [ADR-022](./08-decisions.md#adr-022--stratégie-doptimisation-de-coût-sans-perte-de-qualité), levier #1) : checkpoint MinIO toutes les 5 000 iter, reprise automatique après éviction d'un pod spot. Gain attendu : -50% sur le cloud spend.
-- [ ] Suite de tests E2E sur dataset jouet (200 m).
-- [ ] Documentation utilisateur dans `README.md` mise à jour.
+- [x] Suite de tests E2E sur dataset jouet (`tests/integration/pipeline/test_e2e_cpu_chain.py` — fixture `synthetic_capture` + MinIO testcontainers, skip si ffmpeg/docker absents). Couvre la chaîne CPU complète ingest → fuse → detect → select_keyframes.
+- [x] Documentation utilisateur dans `README.md` mise à jour (commandes complètes ingest + run_gpu_pipeline + export AC).
 - [ ] Premier circuit installé via Content Manager et rouler dedans.
 - [ ] Production de `specs/reviews/1-end-of-iteration.md` à la fin.
 
